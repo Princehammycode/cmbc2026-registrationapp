@@ -1,4 +1,25 @@
 const axios = require('axios');
+const https = require('https');
+
+const mnotifyHttpsAgent = new https.Agent({
+  keepAlive: true,
+  family: 4
+});
+
+async function postToMnotify(smsData) {
+  return axios.post('https://api.mnotify.com/api/sms/quick', smsData, {
+    httpsAgent: mnotifyHttpsAgent,
+    timeout: 10000,
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    maxRedirects: 5,
+    validateStatus: function (status) {
+      return status >= 200 && status < 500;
+    }
+  });
+}
 
 /**
  * Send registration SMS via mNotify API
@@ -9,6 +30,12 @@ const axios = require('axios');
  * @returns {Promise<Object>} Response object with success status
  */
 async function sendRegistrationSMS(phoneNumber, name, ticketId, downloadUrl) {
+  const apiKey = (process.env.MNOTIFY_API_KEY || '').trim();
+  if (!apiKey) {
+    console.error('❌ MNOTIFY_API_KEY is not configured');
+    return { success: false, message: 'MNOTIFY_API_KEY is not configured' };
+  }
+
   // Format phone number to ensure it's in the correct format
   const formattedPhone = formatPhoneNumber(phoneNumber);
 
@@ -18,30 +45,35 @@ async function sendRegistrationSMS(phoneNumber, name, ticketId, downloadUrl) {
 
   const message = `Dear ${name}, Thank you for registering for CMBC 2026 (Church Growth & Missions Breakthrough Conference).\n\nYour Ticket ID is: ${formattedTicketId}\nGod bless you and see you from Tue 24th - Fri 27th NOVEMBER 2026 at Holy Hill Chapel AG, Faith Cathedral, Circle-Accra @ 6PM each night.`;
 
+  const primarySender = (process.env.MNOTIFY_SENDER_ID || '').trim();
+  const fallbackSender = (process.env.MNOTIFY_FALLBACK_SENDER_ID || 'HHC-SBM2026').trim();
+
   // mNotify API payload structure
   const smsData = {
-    key: (process.env.MNOTIFY_API_KEY || '').trim(),        // Your mNotify API key
-    recipient: [formattedPhone],              // Array of phone numbers
-    sender: (process.env.MNOTIFY_SENDER_ID || '').trim(),   // Your approved sender ID
+    key: apiKey,
+    recipient: [formattedPhone],
+    sender: primarySender,
     message: message,
-    is_schedule: false,                       // Send immediately
-    schedule_date: ''                         // Empty for immediate sending
+    is_schedule: false,
+    schedule_date: ''
   };
 
   try {
-    // mNotify API endpoint - No timeout for immediate delivery
-    const response = await axios.post('https://api.mnotify.com/api/sms/quick', smsData, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      maxRedirects: 5,
-      validateStatus: function (status) {
-        return status >= 200 && status < 500; // Accept any status code less than 500
-      }
-    });
+    let response = await postToMnotify(smsData);
+    console.log(`SMS API response (sender="${primarySender}"):`, response.data);
 
-    console.log('SMS sent successfully:', response.data);
+    // If primary sender ID is rejected/unapproved, retry once immediately with approved fallback sender
+    if (
+      (!response.data || response.data.code !== '2000') &&
+      fallbackSender &&
+      primarySender !== fallbackSender
+    ) {
+      console.warn(
+        `⚠️ Primary Sender ID "${primarySender}" rejected by mNotify (${response.data?.message || 'non-2000'}). Retrying immediately with "${fallbackSender}"...`
+      );
+      response = await postToMnotify({ ...smsData, sender: fallbackSender });
+      console.log(`SMS API fallback response (sender="${fallbackSender}"):`, response.data);
+    }
 
     // Check if the API returned success
     if (response.data && response.data.code === '2000') {

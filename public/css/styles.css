@@ -2594,6 +2594,19 @@ input[type=number] {
     font-size: 12px;
     padding: 6px 10px;
   }
+
+  .form-group.floating:not([data-field="memberStatus"]) label {
+    font-size: 13.5px;
+    max-width: calc(100% - 56px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .form-group.floating input:focus ~ label,
+  .form-group.floating input:not(:placeholder-shown) ~ label {
+    font-size: 9.5px;
+    letter-spacing: 0.05em;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

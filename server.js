@@ -1,4 +1,8 @@
 require('dotenv').config();
+const dns = require('dns');
+if (typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first');
+}
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -224,15 +228,6 @@ app.post(
             : new Date().toISOString();
         registration.emailSent = false;
         registration.smsSent = false;
-
-        (async () => {
-          try {
-            await excelService.saveToExcel(registration);
-            console.log('✅ Backup saved to Google Sheets:', ticketId);
-          } catch (sheetError) {
-            console.error('⚠️ Google Sheets backup failed (non-critical):', sheetError.message);
-          }
-        })();
       } else {
         const allRegs = await excelService.getAllRegistrations();
         if (sheetsHasDuplicate(allRegs, normalizedContact, name)) {
@@ -272,6 +267,7 @@ app.post(
 
       const ticketDownloadUrl = `${process.env.TICKET_DOWNLOAD_BASE_URL}/${ticketId}`;
 
+      // Dispatch SMS immediately before any secondary background backup work
       (async () => {
         try {
           console.log('📱 Sending SMS to:', storedContact);
@@ -289,14 +285,16 @@ app.post(
                 .catch((err) =>
                   console.error('Failed to update SMS status in PostgreSQL:', err)
                 );
-              await excelService
-                .updateRegistrationStatus(ticketId, { smsSent: true })
-                .catch((err) =>
-                  console.error(
-                    'Failed to update SMS status in Sheets (non-critical):',
-                    err
-                  )
-                );
+              if (process.env.USE_GOOGLE_SHEETS === 'true') {
+                await excelService
+                  .updateRegistrationStatus(ticketId, { smsSent: true })
+                  .catch((err) =>
+                    console.error(
+                      'Failed to update SMS status in Sheets (non-critical):',
+                      err
+                    )
+                  );
+              }
             } else {
               await excelService
                 .updateRegistrationStatus(ticketId, { smsSent: true })
@@ -305,7 +303,8 @@ app.post(
           } else {
             console.error(
               '❌ SMS sending failed:',
-              smsResult?.message || 'Unknown error'
+              smsResult?.message || 'Unknown error',
+              smsResult?.response || ''
             );
           }
         } catch (smsError) {
@@ -313,13 +312,16 @@ app.post(
         }
       })();
 
-      (async () => {
-        try {
-          await dbService.saveRegistration(registration);
-        } catch (dbError) {
-          console.log('⚠️  MySQL save skipped (database not configured)');
-        }
-      })();
+      if (process.env.DATABASE_URL && process.env.USE_GOOGLE_SHEETS === 'true') {
+        (async () => {
+          try {
+            await excelService.saveToExcel(registration);
+            console.log('✅ Backup saved to Google Sheets:', ticketId);
+          } catch (sheetError) {
+            console.error('⚠️ Google Sheets backup failed (non-critical):', sheetError.message);
+          }
+        })();
+      }
 
       res.json({
         success: true,
