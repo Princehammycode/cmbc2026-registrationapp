@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: hhc-cmbc-registration
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cmbc-postgres
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SESSION_TIMEOUT
+        value: "21600000"
+      - key: USE_GOOGLE_SHEETS
+        value: "false"
+      - key: MNOTIFY_SENDER_ID
+        value: CMBC2026
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: MNOTIFY_API_KEY
+        sync: false
+      - key: GOOGLE_SPREADSHEET_ID
+        sync: false
+      - key: GOOGLE_CREDENTIALS_BASE64
+        sync: false
+
+databases:
+  - name: cmbc-postgres
+    databaseName: cmbc_records
+    user: cmbc_user
+    plan: free
+    region: oregon
