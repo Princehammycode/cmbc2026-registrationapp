@@ -11,6 +11,7 @@ const smsService = require('./services/smsService');
 const excelService = require('./services/excelService');
 const dbService = require('./services/dbService');
 const databaseService = require('./services/databaseService');
+const keepAliveService = require('./services/keepAliveService');
 const { verifyToken, generateToken, verifyCredentials } = require('./middleware/auth');
 const {
   loginLimiter,
@@ -556,6 +557,8 @@ if (require.main === module) {
         : 'Not configured'
       }`
     );
+    // Start background keep-alive to prevent Render free-tier inactive shutdown
+    keepAliveService.startKeepAlive();
   });
 }
 
