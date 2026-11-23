@@ -2885,8 +2885,8 @@ input[type=number] {
   }
 
   .form-section {
-    width: 100% !important;
-    max-width: 680px !important;
+    width: 90% !important;
+    max-width: 820px !important;
     flex: none;
     margin: auto;
   }
@@ -2899,57 +2899,83 @@ input[type=number] {
   }
 
   .form-card-head {
-    padding: 34px 38px 24px;
+    padding: 42px 44px 30px;
+  }
+
+  .form-eyebrow {
+    font-size: 13.5px;
+    margin-bottom: 12px;
   }
 
   .form-title {
-    font-size: 36px;
+    font-size: 44px;
+    margin-bottom: 8px;
   }
 
   .form-subtitle {
-    font-size: 15px;
+    font-size: 17px;
   }
 
   .event-chips {
-    flex-wrap: nowrap;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 20px;
   }
 
   .event-chips li {
-    font-size: 12.5px;
-    padding: 7px 13px;
+    font-size: 14.5px;
+    padding: 9px 15px;
+  }
+
+  .mode-switcher {
+    margin-top: 22px;
+    padding: 6px;
   }
 
   .mode-tab {
-    padding: 12px 14px;
-    font-size: 14.5px;
+    padding: 15px 18px;
+    font-size: 16.5px;
   }
 
   #registrationForm {
     flex: none;
     justify-content: flex-start;
-    padding: 28px 38px 32px;
-    gap: 20px;
+    padding: 34px 44px 38px;
+    gap: 24px;
   }
 
   .form-group.floating .input-wrap,
   .form-group.floating .input-wrap.phone-input-wrap {
-    min-height: 62px;
-    height: 62px;
+    min-height: 70px;
+    height: 70px;
   }
 
   .form-group.floating input,
   .custom-select-wrap .select-value {
+    font-size: 18px;
+  }
+
+  .form-group.floating:not([data-field="memberStatus"]) label,
+  .custom-select-wrap .select-label {
     font-size: 16px;
   }
 
+  .helper {
+    font-size: 13.5px;
+    margin-top: 8px;
+  }
+
   .submit-wrap {
-    margin-top: 6px;
+    margin-top: 10px;
   }
 
   .submit-btn {
-    padding: 18px 28px;
-    font-size: 17.5px;
+    padding: 21px 32px;
+    font-size: 20px;
+  }
+
+  .submit-note {
+    font-size: 14px;
   }
 
   .site-footer,
