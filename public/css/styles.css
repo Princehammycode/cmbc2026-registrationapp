@@ -2811,3 +2811,27 @@ input[type=number] {
   .verify-btn { padding: 0 14px; min-width: 88px; font-size: 13px; }
   .day-pills { grid-template-columns: repeat(2, 1fr); }
 }
+
+
+/* ==========================================================================
+   TABLET / DESKTOP KIOSK CENTERING (NO PEEKING FOOTER / SOCIAL ICONS)
+   ========================================================================== */
+@media (min-width: 1025px) {
+  .page-wrap {
+    min-height: 100dvh;
+    padding: 20px 28px;
+    justify-content: center;
+  }
+
+  .layout {
+    flex: 1;
+    min-height: calc(100dvh - 40px);
+    align-items: center;
+    align-content: center;
+  }
+
+  .site-footer,
+  .footer-socials {
+    display: none;
+  }
+}
