@@ -2859,3 +2859,129 @@ input[type=number] {
     display: none;
   }
 }
+
+
+/* ==========================================================================
+   TABLET PORTRAIT KIOSK (600px – 1024px): FULL-SCREEN BALANCED FORM
+   ========================================================================== */
+@media (min-width: 600px) and (max-width: 1024px) {
+  .page-wrap {
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 28px 32px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .layout {
+    flex: 1;
+    width: 100%;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+  }
+
+  .form-section {
+    width: 100% !important;
+    max-width: 94% !important;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .form-card {
+    width: 100%;
+    flex: 1;
+    max-height: 86dvh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .form-card-head {
+    padding: 36px 38px 26px;
+  }
+
+  .form-title {
+    font-size: 38px;
+  }
+
+  .form-subtitle {
+    font-size: 16px;
+  }
+
+  .event-chips li {
+    font-size: 13.5px;
+    padding: 8px 14px;
+  }
+
+  .mode-tab {
+    padding: 13px 16px;
+    font-size: 15px;
+  }
+
+  #registrationForm {
+    flex: 1;
+    justify-content: space-evenly;
+    padding: 28px 38px 34px;
+    gap: 20px;
+  }
+
+  .form-group.floating .input-wrap,
+  .form-group.floating .input-wrap.phone-input-wrap {
+    min-height: 66px;
+    height: 66px;
+  }
+
+  .form-group.floating input,
+  .custom-select-wrap .select-value {
+    font-size: 17px;
+  }
+
+  .submit-btn {
+    padding: 20px 32px;
+    font-size: 19px;
+  }
+
+  .site-footer,
+  .footer-socials {
+    display: none;
+  }
+}
+
+
+/* ==========================================================================
+   MOBILE RETURNING-ATTENDEE POLISH (<= 768px / <= 520px)
+   ========================================================================== */
+@media (max-width: 768px) {
+  #registrationForm .form-grid-row .form-group + .form-group {
+    margin-top: 14px;
+  }
+}
+
+@media (max-width: 520px) {
+  .phone-verify-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .verify-btn {
+    width: 100%;
+    height: 46px;
+    font-size: 14.5px;
+  }
+
+  .submit-btn {
+    padding: 15px 14px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+
+  .submit-btn .btn-default {
+    white-space: nowrap;
+    gap: 8px;
+  }
+}
