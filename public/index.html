@@ -17,7 +17,7 @@
     referrerpolicy="no-referrer">
   <link rel="icon" type="image/svg+xml" href="images/logo.svg?v=20261117">
   <link rel="apple-touch-icon" href="images/logo.svg?v=20261117">
-  <link rel="stylesheet" href="css/styles.css?v=20261117f">
+  <link rel="stylesheet" href="css/styles.css?v=20261123d">
 </head>
 
 <body>
@@ -44,6 +44,17 @@
               <li><i class="fa-solid fa-clock"></i>6:00 PM nightly</li>
               <li><i class="fa-solid fa-location-dot"></i>Faith Cathedral, Circle-Accra</li>
             </ul>
+
+            <div class="mode-switcher" role="tablist" aria-label="Registration mode">
+              <button type="button" class="mode-tab active" id="modeNewBtn" data-mode="new" role="tab" aria-selected="true">
+                <i class="fa-solid fa-user-plus"></i>
+                <span>New Registration</span>
+              </button>
+              <button type="button" class="mode-tab" id="modeReturningBtn" data-mode="returning" role="tab" aria-selected="false">
+                <i class="fa-solid fa-user-check"></i>
+                <span>Attended Already</span>
+              </button>
+            </div>
           </div>
 
           <form id="registrationForm" novalidate>
@@ -97,7 +108,8 @@
             </div>
 
             <div class="form-group floating" data-field="contact">
-              <div class="input-wrap phone-input-wrap">
+              <div class="phone-verify-row">
+                <div class="input-wrap phone-input-wrap">
                 <div class="country-picker" id="countryPicker" title="Select Country" tabindex="0" role="combobox"
                   aria-haspopup="listbox" aria-expanded="false">
                   <select id="countrySelect" class="country-select-hidden" aria-label="Select Country" tabindex="-1">
@@ -362,10 +374,23 @@
                   <i class="fa-solid fa-xmark invalid"></i>
                 </span>
               </div>
+                <button type="button" class="verify-btn" id="verifyPhoneBtn" style="display: none;">
+                  <span class="verify-default"><i class="fa-solid fa-magnifying-glass"></i> Verify</span>
+                  <span class="verify-loading" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin"></i></span>
+                </button>
+              </div>
               <p class="helper" id="phoneHelper" data-default="e.g. 0244123456 (10 digits)">
                 <i class="fa-solid fa-circle-info"></i>
                 e.g. 0244123456 (10 digits)
               </p>
+            </div>
+
+            <div class="returning-status-strip" id="returningDayBadges" style="display: none;" aria-live="polite">
+              <div class="returning-strip-head">
+                <span class="returning-verified-badge"><i class="fa-solid fa-circle-check"></i> Record Verified</span>
+                <span class="returning-ticket-tag" id="verifiedTicketTag"></span>
+              </div>
+              <div class="day-pills" id="verifiedDayPills"></div>
             </div>
 
             <div class="form-group floating" data-field="location">
@@ -467,6 +492,10 @@
       <h3 id="errorTitle" class="modal-title">We hit a snag</h3>
       <p class="modal-subtitle" id="errorMessage">Something went wrong. Please try again.</p>
       <div class="modal-actions">
+        <button type="button" id="switchToCheckInBtn" class="btn btn-primary" style="display: none;">
+          <i class="fa-solid fa-user-check"></i>
+          Switch to Check-In
+        </button>
         <button type="button" id="errorCloseBtn" class="btn btn-primary">
           <i class="fa-solid fa-xmark"></i>
           Close
@@ -480,8 +509,8 @@
     <span class="toast-text" id="toastText">Message</span>
   </div>
 
-  <script src="js/config.js"></script>
-  <script src="js/app.js?v=20261117b" defer></script>
+  <script src="js/config.js?v=20261123"></script>
+  <script src="js/app.js?v=20261123b" defer></script>
 </body>
 
 </html>

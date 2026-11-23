@@ -21,9 +21,48 @@
 
   let bannerTimer = null;
   let errorModalTimer = null;
+  let currentMode = 'new'; // 'new' | 'returning'
+  let verifiedAttendee = null;
+  let pendingDuplicatePhone = '';
+
+  const modeNewBtn = document.getElementById('modeNewBtn');
+  const modeReturningBtn = document.getElementById('modeReturningBtn');
+  const verifyPhoneBtn = document.getElementById('verifyPhoneBtn');
+  const returningDayBadges = document.getElementById('returningDayBadges');
+  const verifiedTicketTag = document.getElementById('verifiedTicketTag');
+  const verifiedDayPills = document.getElementById('verifiedDayPills');
+  const switchToCheckInBtn = document.getElementById('switchToCheckInBtn');
+
+  function getActiveDay() {
+    return (window._APP_CONFIG && window._APP_CONFIG.activeDay) || 1;
+  }
+
+  window.addEventListener('cmbc:configLoaded', () => {
+    updateSubmitButtonLabel();
+  });
 
   if (topBannerCloseBtn && topSuccessBanner) {
     topBannerCloseBtn.addEventListener('click', hideTopSuccess);
+  }
+
+  if (switchToCheckInBtn) {
+    switchToCheckInBtn.addEventListener('click', () => {
+      const savedPhone = pendingDuplicatePhone;
+      if (errorModalTimer) {
+        clearTimeout(errorModalTimer);
+        errorModalTimer = null;
+      }
+      closeModal(errorModal);
+      setMode('returning');
+      if (savedPhone) {
+        const contactEl = document.getElementById('contact');
+        if (contactEl) {
+          contactEl.value = savedPhone;
+          contactEl.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        verifyReturningPhone();
+      }
+    });
   }
 
   document.getElementById('errorCloseBtn')?.addEventListener('click', () => {
@@ -60,10 +99,215 @@
   initValidators();
   initCustomDropdown();
   initCountryPicker();
+  initReturningMode();
 
   form.addEventListener('submit', onSubmit);
 
-  function showTopSuccess(name, ticketId) {
+  function initReturningMode() {
+    if (modeNewBtn) {
+      modeNewBtn.addEventListener('click', () => setMode('new'));
+    }
+    if (modeReturningBtn) {
+      modeReturningBtn.addEventListener('click', () => setMode('returning'));
+    }
+    if (verifyPhoneBtn) {
+      verifyPhoneBtn.addEventListener('click', verifyReturningPhone);
+    }
+
+    const contactEl = document.getElementById('contact');
+    if (contactEl) {
+      contactEl.addEventListener('input', () => {
+        if (currentMode === 'returning' && verifiedAttendee) {
+          clearVerifiedProfile();
+        }
+      });
+    }
+  }
+
+  function setMode(mode) {
+    currentMode = mode === 'returning' ? 'returning' : 'new';
+    verifiedAttendee = null;
+
+    if (modeNewBtn) {
+      modeNewBtn.classList.toggle('active', currentMode === 'new');
+      modeNewBtn.setAttribute('aria-selected', String(currentMode === 'new'));
+    }
+    if (modeReturningBtn) {
+      modeReturningBtn.classList.toggle('active', currentMode === 'returning');
+      modeReturningBtn.setAttribute('aria-selected', String(currentMode === 'returning'));
+    }
+
+    resetForm();
+
+    const nameEl = document.getElementById('name');
+    const locEl = document.getElementById('location');
+    const selectWrap = document.getElementById('customSelectWrap');
+    const isRet = currentMode === 'returning';
+
+    if (form) {
+      form.classList.toggle('is-returning-mode', isRet);
+      form.classList.remove('is-verified');
+    }
+    if (verifyPhoneBtn) {
+      verifyPhoneBtn.style.display = isRet ? 'inline-flex' : 'none';
+    }
+    if (nameEl) {
+      nameEl.readOnly = isRet;
+      nameEl.tabIndex = isRet ? -1 : 0;
+    }
+    if (locEl) {
+      locEl.readOnly = isRet;
+      locEl.tabIndex = isRet ? -1 : 0;
+    }
+    if (selectWrap) {
+      selectWrap.tabIndex = isRet ? -1 : 0;
+    }
+
+    updateSubmitButtonLabel();
+
+    setTimeout(() => {
+      const target = isRet ? document.getElementById('contact') : document.getElementById('name');
+      if (target) target.focus();
+    }, 60);
+  }
+
+  function clearVerifiedProfile() {
+    verifiedAttendee = null;
+    if (form) form.classList.remove('is-verified');
+    if (returningDayBadges) returningDayBadges.style.display = 'none';
+
+    const nameEl = document.getElementById('name');
+    const locEl = document.getElementById('location');
+    const hiddenInput = document.getElementById('memberStatus');
+    const valueDisplay = document.getElementById('selectValue');
+    const wrap = document.getElementById('customSelectWrap');
+
+    if (nameEl) nameEl.value = '';
+    if (locEl) locEl.value = '';
+    if (hiddenInput) hiddenInput.value = '';
+    if (valueDisplay) valueDisplay.textContent = '';
+    if (wrap) wrap.classList.remove('has-value', 'is-open');
+
+    updateSubmitButtonLabel();
+  }
+
+  function updateSubmitButtonLabel() {
+    if (!submitBtn) return;
+    const defSpan = submitBtn.querySelector('.btn-default');
+    const day = getActiveDay();
+
+    if (currentMode === 'new') {
+      submitBtn.disabled = false;
+      if (defSpan) defSpan.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Secure My Seat';
+      return;
+    }
+
+    if (!verifiedAttendee) {
+      submitBtn.disabled = true;
+      if (defSpan) defSpan.innerHTML = `<i class="fa-solid fa-user-check"></i> Verify Phone to Check In (Day ${day})`;
+    } else if (verifiedAttendee.alreadyCheckedInToday) {
+      submitBtn.disabled = true;
+      if (defSpan) defSpan.innerHTML = `<i class="fa-solid fa-circle-check"></i> Already Checked In for Day ${day}`;
+    } else {
+      submitBtn.disabled = false;
+      if (defSpan) defSpan.innerHTML = `<i class="fa-solid fa-check-double"></i> Confirm Check-In for Day ${day}`;
+    }
+  }
+
+  function renderVerifiedDayPills(att, activeDay) {
+    if (!returningDayBadges || !verifiedDayPills) return;
+    if (verifiedTicketTag) verifiedTicketTag.textContent = att.ticketId || '';
+
+    const days = [
+      { num: 1, label: 'Day 1', ok: !!att.day1 },
+      { num: 2, label: 'Day 2', ok: !!att.day2 },
+      { num: 3, label: 'Day 3', ok: !!att.day3 },
+      { num: 4, label: 'Day 4', ok: !!att.day4 }
+    ];
+
+    verifiedDayPills.innerHTML = days.map((d) => {
+      const cls = ['day-pill', d.ok ? 'attended' : '', d.num === activeDay ? 'is-today' : ''].filter(Boolean).join(' ');
+      const icon = d.ok ? '<i class="fa-solid fa-check"></i>' : '<i class="fa-regular fa-circle"></i>';
+      return `<span class="${cls}">${icon} ${d.label}</span>`;
+    }).join('');
+
+    returningDayBadges.style.display = 'flex';
+  }
+
+  async function verifyReturningPhone() {
+    const contactEl = document.getElementById('contact');
+    if (!contactEl) return;
+
+    if (typeof contactEl.__validate === 'function' && !contactEl.__validate()) {
+      showToast('Please enter a valid phone number first.', 'warn');
+      contactEl.focus();
+      return;
+    }
+
+    const country = getSelectedCountry();
+    const rawContact = contactEl.value.trim();
+    const arrangedContact = formatArrangedPhone(rawContact, country);
+    const API_URL = (window._APP_CONFIG && window._APP_CONFIG.apiUrl) || window.API_BASE_URL || (window.location.origin + '/api');
+
+    if (verifyPhoneBtn) {
+      verifyPhoneBtn.classList.add('loading');
+      verifyPhoneBtn.disabled = true;
+    }
+
+    try {
+      const res = await fetch(API_URL + '/verify-attendee', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contact: arrangedContact })
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.success || !data.attendee) {
+        clearVerifiedProfile();
+        showToast(data.message || 'Phone number not found. Please register under New Registration.', 'err');
+        return;
+      }
+
+      const att = data.attendee;
+      const activeDay = data.activeDay || getActiveDay();
+      if (window._APP_CONFIG) window._APP_CONFIG.activeDay = activeDay;
+
+      verifiedAttendee = att;
+      if (form) form.classList.add('is-verified');
+
+      // Populate locked profile fields
+      const hiddenInput = document.getElementById('memberStatus');
+      const valueDisplay = document.getElementById('selectValue');
+      const wrap = document.getElementById('customSelectWrap');
+      const nameEl = document.getElementById('name');
+      const locEl = document.getElementById('location');
+
+      if (hiddenInput) hiddenInput.value = att.title || '';
+      if (valueDisplay) valueDisplay.textContent = att.title || '—';
+      if (wrap) wrap.classList.add('has-value');
+      if (nameEl) nameEl.value = att.name || '';
+      if (locEl) locEl.value = att.church && att.church !== 'N/A' ? att.church : 'N/A';
+
+      renderVerifiedDayPills(att, activeDay);
+      updateSubmitButtonLabel();
+
+      if (att.alreadyCheckedInToday) {
+        showToast(`${att.name} is already checked in for Day ${activeDay}.`, 'ok');
+      } else {
+        showToast(`Verified: ${att.title ? att.title + ' ' : ''}${att.name}. Tap Confirm Check-In!`, 'ok');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Could not reach server to verify phone number.', 'err');
+    } finally {
+      if (verifyPhoneBtn) {
+        verifyPhoneBtn.classList.remove('loading');
+        verifyPhoneBtn.disabled = false;
+      }
+    }
+  }
+
+  function showTopSuccess(name, ticketId, customDesc) {
     if (!topSuccessBanner) return;
 
     if (topBannerTicketCode) {
@@ -71,7 +315,7 @@
     }
     if (topBannerDesc) {
       const firstName = extractFirst(name);
-      topBannerDesc.textContent = `Thank you, ${firstName}! Your e-ticket was sent via SMS.`;
+      topBannerDesc.textContent = customDesc || `Thank you, ${firstName}! Your confirmation was sent via SMS.`;
     }
 
     if (bannerTimer) {
@@ -107,6 +351,10 @@
   function resetForm() {
     if (!form) return;
     form.reset();
+    verifiedAttendee = null;
+    if (form) form.classList.remove('is-verified');
+    if (returningDayBadges) returningDayBadges.style.display = 'none';
+    updateSubmitButtonLabel();
 
     // Reset custom dropdown
     const hiddenInput = document.getElementById('memberStatus');
@@ -162,11 +410,13 @@
       }
     });
 
-    // Immediately focus on Full Name for the next person standing at the tablet
+    // Focus Phone Number in Returning mode, or Full Name in New Registration mode
     setTimeout(() => {
-      const nameEl = document.getElementById('name');
-      if (nameEl) {
-        nameEl.focus();
+      const targetEl = currentMode === 'returning'
+        ? document.getElementById('contact')
+        : document.getElementById('name');
+      if (targetEl) {
+        targetEl.focus();
       }
     }, 80);
   }
@@ -734,6 +984,53 @@
   async function onSubmit(e) {
     e.preventDefault();
 
+    // Returning Attendee 2-step Check-In submission
+    if (currentMode === 'returning') {
+      if (!verifiedAttendee) {
+        await verifyReturningPhone();
+        return;
+      }
+      if (verifiedAttendee.alreadyCheckedInToday) {
+        showToast(`Already checked in for Day ${getActiveDay()}.`, 'ok');
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const API_URL = (window._APP_CONFIG && window._APP_CONFIG.apiUrl) || window.API_BASE_URL || (window.location.origin + '/api');
+        const country = getSelectedCountry();
+        const rawContact = document.getElementById('contact').value.trim();
+        const arrangedContact = formatArrangedPhone(rawContact, country);
+
+        const response = await fetch(API_URL + '/checkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contact: arrangedContact })
+        });
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok || !data.success) {
+          showErrorModal(data.message || 'Check-in failed. Please try again.', 'Check-In Error', false);
+          return;
+        }
+
+        const att = data.attendee || verifiedAttendee;
+        const activeDay = data.activeDay || getActiveDay();
+        const desc = data.alreadyCheckedIn
+          ? `${att.name} was already checked in for Day ${activeDay}.`
+          : `Welcome back, ${extractFirst(att.name)}! Checked in for Day ${activeDay} & SMS sent.`;
+        showTopSuccess(att.name, att.ticketId || `DAY ${activeDay}`, desc);
+        resetForm();
+      } catch (err) {
+        console.error(err);
+        showErrorModal('We couldn\u2019t reach the server right now. Check your connection and try again.', 'Connection Issue', false);
+      } finally {
+        setLoading(false);
+        updateSubmitButtonLabel();
+      }
+      return;
+    }
+
     const fields = ['name', 'contact', 'memberStatus', 'location'];
     let firstInvalid = null;
     for (const id of fields) {
@@ -783,9 +1080,10 @@
         let isDuplicate = false;
 
         if (code === 'DUPLICATE_REGISTRATION' || code === 'DUPLICATE_CONTACT' || /already exists|already registered/i.test(msg)) {
-          title = "You're Already Registered!";
-          msg = 'You are already registered! Please check your SMS for your ticket ID.';
+          title = "Phone Number Already Registered";
+          msg = 'This phone number is already registered! Click "Switch to Check-In" below to check in for today.';
           isDuplicate = true;
+          pendingDuplicatePhone = rawContact;
         } else if (response.status === 400) {
           title = 'Please Check Your Details';
           msg = (data && data.message) || 'Some fields need your attention — please review and try again.';
@@ -844,16 +1142,12 @@
       if (isDuplicate) {
         errorIconCircle.classList.add('is-info');
         if (errorIcon) errorIcon.className = 'fa-solid fa-circle-check';
-        // Immediately clear input fields so the form is fresh
-        resetForm();
-        // Automatically close modal after 3.5s
-        errorModalTimer = setTimeout(() => {
-          closeModal(errorModal);
-          resetForm();
-        }, 3500);
+        if (switchToCheckInBtn) switchToCheckInBtn.style.display = 'inline-flex';
       } else {
         errorIconCircle.classList.remove('is-info');
         if (errorIcon) errorIcon.className = 'fa-solid fa-xmark';
+        if (switchToCheckInBtn) switchToCheckInBtn.style.display = 'none';
+        pendingDuplicatePhone = '';
       }
     }
 

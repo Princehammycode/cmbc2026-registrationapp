@@ -9,8 +9,13 @@ window._APP_CONFIG = { apiUrl: window.location.origin + '/api' };
       const config = await response.json();
       if (config && config.apiUrl) {
         window.API_BASE_URL = config.apiUrl;
-        window._APP_CONFIG = { apiUrl: config.apiUrl };
-        console.log('✅ API URL loaded:', config.apiUrl);
+        window._APP_CONFIG = {
+          apiUrl: config.apiUrl,
+          activeDay: config.activeDay || 1,
+          conferenceDays: config.conferenceDays || []
+        };
+        window.dispatchEvent(new CustomEvent('cmbc:configLoaded', { detail: window._APP_CONFIG }));
+        console.log('✅ API URL loaded:', config.apiUrl, '| Active Day:', window._APP_CONFIG.activeDay);
       }
     }
   } catch (error) {

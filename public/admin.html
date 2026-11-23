@@ -15,7 +15,7 @@
     referrerpolicy="no-referrer">
   <link rel="icon" type="image/svg+xml" href="images/logo.svg?v=20261117">
   <link rel="apple-touch-icon" href="images/logo.svg?v=20261117">
-  <link rel="stylesheet" href="css/admin.css?v=20261117">
+  <link rel="stylesheet" href="css/admin.css?v=20261123d">
 </head>
 
 <body>
@@ -130,76 +130,98 @@
           <div class="search-box-wrap">
             <i class="fa-solid fa-magnifying-glass search-icon"></i>
             <input type="text" id="searchInput" class="search-input"
-              placeholder="Search by name, phone, ticket ID, status, location..." autocomplete="off">
+              placeholder="Search by name, phone, ticket ID, title, church/org..." autocomplete="off">
             <button type="button" class="search-clear-btn" id="searchClearBtn" title="Clear search"
               style="display: none;">
               <i class="fa-solid fa-xmark"></i>
             </button>
           </div>
 
-          <!-- Contact Deduplication Filter Dropdown -->
-          <div class="toolbar-dropdown-wrap" id="filterDropdownWrap">
-            <button type="button" class="toolbar-dropdown-btn" id="filterDropdownBtn" aria-haspopup="true"
-              aria-expanded="false" title="Filter by contact uniqueness">
-              <i class="fa-solid fa-filter" id="filterDropdownIcon"></i>
-              <span class="dropdown-selected-text" id="filterDropdownLabel">All Headcount</span>
-              <span class="pill-count" id="filterDropdownCount">0</span>
+          <!-- Title Filter Dropdown -->
+          <div class="toolbar-dropdown-wrap" id="titleDropdownWrap">
+            <button type="button" class="toolbar-dropdown-btn" id="titleDropdownBtn" aria-haspopup="true"
+              aria-expanded="false" title="Filter by title">
+              <i class="fa-solid fa-user-tag" id="titleDropdownIcon"></i>
+              <span class="dropdown-selected-text" id="titleDropdownLabel">All Titles</span>
+              <span class="pill-count" id="titleDropdownCount">0</span>
               <i class="fa-solid fa-chevron-down dropdown-chevron"></i>
             </button>
-            <div class="toolbar-dropdown-menu" id="filterDropdownMenu" role="menu">
-              <button type="button" class="dropdown-item active" data-filter="all" role="menuitem">
-                <div class="dropdown-item-info">
-                  <i class="fa-solid fa-users"></i>
-                  <span>All Headcount</span>
-                </div>
-                <span class="pill-count" id="countFilterAll">0</span>
-              </button>
-              <button type="button" class="dropdown-item" data-filter="unique" role="menuitem">
-                <div class="dropdown-item-info">
-                  <i class="fa-solid fa-address-book"></i>
-                  <span>Unique Contacts</span>
-                </div>
-                <span class="pill-count" id="countFilterUnique">0</span>
-              </button>
-              <button type="button" class="dropdown-item" data-filter="shared" role="menuitem">
-                <div class="dropdown-item-info">
-                  <i class="fa-solid fa-people-group"></i>
-                  <span>Shared Numbers</span>
-                </div>
-                <span class="pill-count" id="countFilterShared">0</span>
-              </button>
+            <div class="toolbar-dropdown-menu left-aligned location-dropdown-menu" id="titleDropdownMenu" role="menu">
+              <!-- Populated dynamically from titles in the table -->
             </div>
           </div>
-          <!-- Location Filter Dropdown -->
+
+          <!-- Church / Organization Filter Dropdown -->
           <div class="toolbar-dropdown-wrap" id="locationDropdownWrap">
             <button type="button" class="toolbar-dropdown-btn" id="locationDropdownBtn" aria-haspopup="true"
-              aria-expanded="false" title="Filter by location">
-              <i class="fa-solid fa-location-dot" id="locationDropdownIcon"></i>
-              <span class="dropdown-selected-text" id="locationDropdownLabel">All Locations</span>
+              aria-expanded="false" title="Filter by church or organization">
+              <i class="fa-solid fa-church" id="locationDropdownIcon"></i>
+              <span class="dropdown-selected-text" id="locationDropdownLabel">All Churches / Orgs</span>
               <span class="pill-count" id="locationDropdownCount">0</span>
               <i class="fa-solid fa-chevron-down dropdown-chevron"></i>
             </button>
             <div class="toolbar-dropdown-menu left-aligned location-dropdown-menu" id="locationDropdownMenu" role="menu">
-              <!-- Populated dynamically from locations in the table -->
+              <!-- Populated dynamically from churches/organizations in the table -->
             </div>
           </div>
 
-          <!-- Clear All Active Filters Button (appears right next to filters on the same line) -->
+          <!-- Clear All Active Filters Button -->
           <button type="button" class="btn btn-clear-filters" id="clearAllFiltersBtn"
-            title="Clear all active search, date, contact and location filters" style="display: none;">
+            title="Clear all active filters" style="display: none;">
             <i class="fa-solid fa-filter-circle-xmark"></i>
             <span>Clear</span>
           </button>
         </div>
         <div class="toolbar-right">
-          <!-- Date Filter Control -->
-          <div class="date-filter-wrap" id="dateFilterWrap" title="Filter records by date">
-            <i class="fa-regular fa-calendar-days date-filter-icon"></i>
-            <input type="date" id="dateFilter" class="date-filter-input" aria-label="Filter records by date">
-            <button type="button" class="date-clear-btn" id="dateClearBtn" title="Clear date filter"
-              style="display: none;">
-              <i class="fa-solid fa-xmark"></i>
+          <!-- Conference Day Custom Dropdown -->
+          <div class="toolbar-dropdown-wrap" id="dayDropdownWrap">
+            <button type="button" class="toolbar-dropdown-btn" id="dayDropdownBtn" aria-haspopup="true"
+              aria-expanded="false" title="Filter by conference day">
+              <i class="fa-regular fa-calendar-days"></i>
+              <span class="dropdown-selected-text" id="dayDropdownLabel">All Days</span>
+              <i class="fa-solid fa-chevron-down dropdown-chevron"></i>
             </button>
+            <div class="toolbar-dropdown-menu right-aligned" id="dayDropdownMenu" role="menu">
+              <button type="button" class="dropdown-item active" data-day="all" data-label="All Days" role="menuitem">
+                <div class="dropdown-item-info"><i class="fa-regular fa-calendar"></i><span>All Conference Days</span></div>
+              </button>
+              <button type="button" class="dropdown-item" data-day="1" data-label="Day 1 (Tue 24)" role="menuitem">
+                <div class="dropdown-item-info"><i class="fa-solid fa-calendar-day"></i><span>Tue Nov 24th - Day 1</span></div>
+              </button>
+              <button type="button" class="dropdown-item" data-day="2" data-label="Day 2 (Wed 25)" role="menuitem">
+                <div class="dropdown-item-info"><i class="fa-solid fa-calendar-day"></i><span>Wed Nov 25th - Day 2</span></div>
+              </button>
+              <button type="button" class="dropdown-item" data-day="3" data-label="Day 3 (Thu 26)" role="menuitem">
+                <div class="dropdown-item-info"><i class="fa-solid fa-calendar-day"></i><span>Thu Nov 26th - Day 3</span></div>
+              </button>
+              <button type="button" class="dropdown-item" data-day="4" data-label="Day 4 (Fri 27)" role="menuitem">
+                <div class="dropdown-item-info"><i class="fa-solid fa-calendar-day"></i><span>Fri Nov 27th - Day 4</span></div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Attendance Status Custom Dropdown -->
+          <div class="toolbar-dropdown-wrap" id="attendanceDropdownWrap">
+            <button type="button" class="toolbar-dropdown-btn" id="attendanceDropdownBtn" aria-haspopup="true"
+              aria-expanded="false" title="Filter by attendance status">
+              <i class="fa-solid fa-clipboard-check"></i>
+              <span class="dropdown-selected-text" id="attendanceDropdownLabel">All Attendance</span>
+              <i class="fa-solid fa-chevron-down dropdown-chevron"></i>
+            </button>
+            <div class="toolbar-dropdown-menu right-aligned" id="attendanceDropdownMenu" role="menu">
+              <button type="button" class="dropdown-item active" data-att="all" data-label="All Attendance" role="menuitem">
+                <div class="dropdown-item-info"><i class="fa-solid fa-list-check"></i><span>All Attendance</span></div>
+              </button>
+              <button type="button" class="dropdown-item" data-att="yes" data-label="Attended (Yes)" role="menuitem">
+                <div class="dropdown-item-info"><i class="fa-solid fa-circle-check"></i><span>Attended (Yes)</span></div>
+              </button>
+              <button type="button" class="dropdown-item" data-att="no" data-label="Not Attended (No)" role="menuitem">
+                <div class="dropdown-item-info"><i class="fa-regular fa-circle-xmark"></i><span>Not Attended (No)</span></div>
+              </button>
+              <button type="button" class="dropdown-item" data-att="all4" data-label="All 4 Days" role="menuitem">
+                <div class="dropdown-item-info"><i class="fa-solid fa-award"></i><span>Attended All 4 Days</span></div>
+              </button>
+            </div>
           </div>
 
           <label class="auto-refresh-toggle" title="Toggle real-time auto refresh (every 15s)">
@@ -230,15 +252,6 @@
                   <div class="item-text-wrap">
                     <strong class="item-title">Export Current View</strong>
                     <small class="item-desc">Exports records currently filtered/searched</small>
-                  </div>
-                </div>
-              </button>
-              <button type="button" class="dropdown-item highlight-pink" id="exportUniqueSmsBtn" role="menuitem">
-                <div class="dropdown-item-info">
-                  <i class="fa-solid fa-bullhorn text-pink"></i>
-                  <div class="item-text-wrap">
-                    <strong class="item-title text-pink">Export Unique Contacts (SMS)</strong>
-                    <small class="item-desc">Deduplicated phone numbers for Bulk SMS</small>
                   </div>
                 </div>
               </button>
@@ -311,6 +324,19 @@
         <div class="pagination-wrap">
           <div class="pagination-info">
             <span id="paginationInfo">Showing 0 – 0 of 0 entries</span>
+            <div class="page-size-wrap" id="pageSizeDropdownWrap">
+              <span class="page-size-label">Rows:</span>
+              <button type="button" class="page-size-btn" id="pageSizeDropdownBtn" aria-haspopup="true" aria-expanded="false">
+                <span id="pageSizeLabel">25</span>
+                <i class="fa-solid fa-chevron-up page-size-chevron"></i>
+              </button>
+              <div class="toolbar-dropdown-menu page-size-menu" id="pageSizeDropdownMenu" role="menu">
+                <button type="button" class="dropdown-item active" data-size="25" role="menuitem"><span>25 per page</span></button>
+                <button type="button" class="dropdown-item" data-size="50" role="menuitem"><span>50 per page</span></button>
+                <button type="button" class="dropdown-item" data-size="75" role="menuitem"><span>75 per page</span></button>
+                <button type="button" class="dropdown-item" data-size="100" role="menuitem"><span>100 per page</span></button>
+              </div>
+            </div>
           </div>
           <div class="pagination-controls">
             <button type="button" class="page-btn" id="firstPageBtn" onclick="goToFirstPage()" title="First Page">
@@ -336,15 +362,122 @@
     </main>
   </div>
 
+  <!-- View Full Details Modal -->
+  <div class="admin-modal" id="viewRecordModal" role="dialog" aria-modal="true" aria-labelledby="viewModalTitle">
+    <div class="admin-modal-backdrop" data-close-admin-modal="viewRecordModal"></div>
+    <div class="admin-modal-panel">
+      <div class="admin-modal-head">
+        <h3 id="viewModalTitle"><i class="fa-solid fa-id-card"></i> Attendee Full Details</h3>
+        <button type="button" class="admin-modal-close" data-close-admin-modal="viewRecordModal" aria-label="Close">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="admin-modal-body" id="viewRecordBody"></div>
+      <div class="admin-modal-foot">
+        <button type="button" class="btn btn-ghost" data-close-admin-modal="viewRecordModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Record Modal -->
+  <div class="admin-modal" id="editRecordModal" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
+    <div class="admin-modal-backdrop" data-close-admin-modal="editRecordModal"></div>
+    <div class="admin-modal-panel">
+      <div class="admin-modal-head">
+        <h3 id="editModalTitle"><i class="fa-solid fa-pen-to-square"></i> Edit Registration</h3>
+        <button type="button" class="admin-modal-close" data-close-admin-modal="editRecordModal" aria-label="Close">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <form id="editRecordForm">
+        <input type="hidden" id="editRecordId">
+        <div class="admin-modal-body">
+          <div class="modal-form-grid">
+            <div class="modal-field">
+              <label for="editTitle">Title</label>
+              <select id="editTitle">
+                <option value="">— Select —</option>
+                <option value="Mr.">Mr.</option>
+                <option value="Mrs.">Mrs.</option>
+                <option value="Miss">Miss</option>
+                <option value="Dr.">Dr.</option>
+                <option value="Rev.">Rev.</option>
+                <option value="Min.">Min.</option>
+                <option value="Pastor">Pastor</option>
+                <option value="Bishop">Bishop</option>
+                <option value="Elder">Elder</option>
+                <option value="Deacon">Deacon</option>
+                <option value="Deaconess">Deaconess</option>
+                <option value="Bro.">Bro.</option>
+                <option value="Sis.">Sis.</option>
+              </select>
+            </div>
+            <div class="modal-field">
+              <label for="editName">Full Name *</label>
+              <input type="text" id="editName" required maxlength="100">
+            </div>
+          </div>
+          <div class="modal-form-grid">
+            <div class="modal-field">
+              <label for="editContact">Phone Number *</label>
+              <input type="tel" id="editContact" required maxlength="20">
+            </div>
+            <div class="modal-field">
+              <label for="editChurch">Church / Organization</label>
+              <input type="text" id="editChurch" maxlength="100">
+            </div>
+          </div>
+          <div class="modal-field">
+            <label>Conference Attendance</label>
+            <div class="modal-days-grid">
+              <label class="day-check-item"><input type="checkbox" id="editDay1"> <span>Day 1 (Tue 24)</span></label>
+              <label class="day-check-item"><input type="checkbox" id="editDay2"> <span>Day 2 (Wed 25)</span></label>
+              <label class="day-check-item"><input type="checkbox" id="editDay3"> <span>Day 3 (Thu 26)</span></label>
+              <label class="day-check-item"><input type="checkbox" id="editDay4"> <span>Day 4 (Fri 27)</span></label>
+            </div>
+          </div>
+        </div>
+        <div class="admin-modal-foot">
+          <button type="button" class="btn btn-ghost" data-close-admin-modal="editRecordModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveEditBtn">
+            <i class="fa-solid fa-floppy-disk"></i> Save Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div class="admin-modal" id="deleteRecordModal" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle">
+    <div class="admin-modal-backdrop" data-close-admin-modal="deleteRecordModal"></div>
+    <div class="admin-modal-panel admin-modal-sm">
+      <div class="admin-modal-head">
+        <h3 id="deleteModalTitle"><i class="fa-solid fa-trash-can" style="color:#dc2626;"></i> Delete Registration</h3>
+        <button type="button" class="admin-modal-close" data-close-admin-modal="deleteRecordModal" aria-label="Close">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="admin-modal-body">
+        <p id="deleteConfirmText" style="color:var(--ash-700);line-height:1.5;">Are you sure you want to delete this record? This action cannot be undone.</p>
+      </div>
+      <div class="admin-modal-foot">
+        <button type="button" class="btn btn-ghost" data-close-admin-modal="deleteRecordModal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
+          <i class="fa-solid fa-trash-can"></i> Delete
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
   <div class="toast" id="toast" role="status" aria-live="polite">
     <i class="toast-icon fa-solid fa-circle-info"></i>
     <span class="toast-message"></span>
   </div>
 
-  <script src="js/config.js"></script>
+  <script src="js/config.js?v=20261123"></script>
   <script src="js/auth.js"></script>
-  <script src="js/admin.js?v=20261117"></script>
+  <script src="js/admin.js?v=20261123d"></script>
 </body>
 
 </html>

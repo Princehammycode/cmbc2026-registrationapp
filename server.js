@@ -64,7 +64,9 @@ app.get('/api/config', (req, res) => {
   const isEnvLocal = !envApiUrl || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(envApiUrl);
   res.json({
     apiUrl: isEnvLocal ? requestApiUrl : envApiUrl,
-    isClosed: false
+    isClosed: false,
+    activeDay: databaseService.getActiveConferenceDay(),
+    conferenceDays: databaseService.CONFERENCE_DAYS
   });
 });
 
@@ -212,8 +214,9 @@ app.post(
           if (saveResult.duplicate) {
             return res.status(409).json({
               success: false,
-              code: 'DUPLICATE_REGISTRATION',
-              message: saveResult.message || 'You are already registered! Please check your SMS for your ticket ID.'
+              code: 'DUPLICATE_CONTACT',
+              existing: saveResult.existing || null,
+              message: saveResult.message || 'This phone number is already registered! Please use "Returning Attendee" to check in.'
             });
           }
           return res.status(500).json({
@@ -368,6 +371,233 @@ app.get('/api/registrations', verifyToken, async (req, res) => {
   }
 });
 
+// Helper: normalize phone number to stored format (Ghana local 0XXXXXXXXX or international +...)
+function toStoredContact(rawInput) {
+  const contact = sanitizeInput(String(rawInput || '').trim());
+  const rawDigits = contact.replace(/\D/g, '');
+  let formattedContact = contact;
+  if (!formattedContact.startsWith('+')) {
+    if (rawDigits.length === 10 && rawDigits.startsWith('0')) {
+      formattedContact = '+233' + rawDigits.substring(1);
+    } else if (rawDigits.length === 9) {
+      formattedContact = '+233' + rawDigits;
+    } else {
+      formattedContact = '+' + rawDigits;
+    }
+  }
+  const formattedDigits = formattedContact.replace(/\D/g, '');
+  if (formattedDigits.startsWith('233') && formattedDigits.length === 12) {
+    return '0' + formattedDigits.substring(3);
+  }
+  if (formattedDigits.length === 10 && formattedDigits.startsWith('0')) {
+    return formattedDigits;
+  }
+  if (formattedDigits.length === 9 && !formattedDigits.startsWith('0')) {
+    return '0' + formattedDigits;
+  }
+  return formattedContact;
+}
+
+// Step 1 of Returning Attendee Check-In: Verify phone number (read-only lookup)
+app.post('/api/verify-attendee', async (req, res) => {
+  try {
+    const rawContact = (req.body && req.body.contact) || '';
+    const rawDigits = String(rawContact).replace(/\D/g, '');
+    if (rawDigits.length < 7 || rawDigits.length > 17) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter a valid phone number.'
+      });
+    }
+
+    const storedContact = toStoredContact(rawContact);
+    const activeDay = databaseService.getActiveConferenceDay();
+    const record = await databaseService.getRegistrationByContact(storedContact);
+
+    if (!record) {
+      return res.status(404).json({
+        success: false,
+        notFound: true,
+        message: 'No previous registration found for this phone number. Please register under "New Registration".'
+      });
+    }
+
+    const dayCol = `day${activeDay}_attended`;
+    return res.json({
+      success: true,
+      activeDay,
+      attendee: {
+        id: record.id,
+        ticketId: record.ticket_id,
+        title: record.member_status || '',
+        name: record.name || '',
+        contact: record.contact || storedContact,
+        church: record.location || 'N/A',
+        day1: Boolean(record.day1_attended),
+        day2: Boolean(record.day2_attended),
+        day3: Boolean(record.day3_attended),
+        day4: Boolean(record.day4_attended),
+        alreadyCheckedInToday: Boolean(record[dayCol])
+      }
+    });
+  } catch (error) {
+    console.error('Verify attendee error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to verify phone number. Please try again.'
+    });
+  }
+});
+
+// Step 2 of Returning Attendee Check-In: Confirm check-in for active conference day & send day welcome SMS
+app.post('/api/checkin', async (req, res) => {
+  try {
+    const rawContact = (req.body && req.body.contact) || '';
+    const rawDigits = String(rawContact).replace(/\D/g, '');
+    if (rawDigits.length < 7 || rawDigits.length > 17) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter a valid phone number.'
+      });
+    }
+
+    const storedContact = toStoredContact(rawContact);
+    const result = await databaseService.checkInAttendee(storedContact);
+    if (!result.success) {
+      if (result.notFound) {
+        return res.status(404).json({
+          success: false,
+          notFound: true,
+          message: result.message
+        });
+      }
+      return res.status(500).json({
+        success: false,
+        message: 'Check-in failed. Please try again.'
+      });
+    }
+
+    const row = result.row;
+    const activeDay = result.activeDay;
+
+    // Send day welcome SMS only if this is the first check-in today (prevents duplicate SMS)
+    if (!result.alreadyCheckedIn) {
+      (async () => {
+        try {
+          console.log(`📱 Sending Day ${activeDay} check-in SMS to:`, row.contact);
+          const smsRes = await smsService.sendReturningCheckInSMS(
+            row.contact,
+            row.name,
+            activeDay
+          );
+          if (smsRes && smsRes.success) {
+            console.log(`✅ Day ${activeDay} check-in SMS sent to:`, row.contact);
+            await databaseService
+              .updateRegistrationStatus(row.ticket_id, null, true)
+              .catch(() => {});
+          } else {
+            console.error(`❌ Day ${activeDay} check-in SMS failed:`, smsRes?.message || 'Unknown error');
+          }
+        } catch (smsErr) {
+          console.error(`❌ Day ${activeDay} check-in SMS error:`, smsErr.message);
+        }
+      })();
+    }
+
+    return res.json({
+      success: true,
+      alreadyCheckedIn: result.alreadyCheckedIn,
+      activeDay,
+      message: result.alreadyCheckedIn
+        ? `You are already checked in for Day ${activeDay}!`
+        : `Welcome! Checked in for Day ${activeDay} of CMBC 2026.`,
+      attendee: {
+        id: row.id,
+        ticketId: row.ticket_id,
+        title: row.member_status || '',
+        name: row.name || '',
+        contact: row.contact || storedContact,
+        church: row.location || 'N/A',
+        day1: Boolean(row.day1_attended),
+        day2: Boolean(row.day2_attended),
+        day3: Boolean(row.day3_attended),
+        day4: Boolean(row.day4_attended)
+      }
+    });
+  } catch (error) {
+    console.error('Check-in endpoint error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Check-in failed. Please try again.'
+    });
+  }
+});
+
+// Admin: Edit a registration record
+app.put('/api/registrations/:id', verifyToken, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid registration ID.' });
+    }
+    const body = req.body || {};
+    const updates = {};
+    if (body.name !== undefined) {
+      const cleanedName = sanitizeInput(String(body.name).trim());
+      if (cleanedName.length < 2) {
+        return res.status(400).json({ success: false, message: 'Full name must be at least 2 characters.' });
+      }
+      updates.name = cleanedName;
+    }
+    if (body.memberStatus !== undefined || body.title !== undefined) {
+      updates.memberStatus = sanitizeInput(String(body.memberStatus ?? body.title ?? '').trim());
+    }
+    if (body.contact !== undefined) {
+      const rawDigits = String(body.contact).replace(/\D/g, '');
+      if (rawDigits.length < 7 || rawDigits.length > 17) {
+        return res.status(400).json({ success: false, message: 'Please enter a valid phone number.' });
+      }
+      updates.contact = toStoredContact(body.contact);
+    }
+    if (body.location !== undefined || body.church !== undefined) {
+      updates.location = sanitizeInput(String(body.location ?? body.church ?? '').trim()) || 'N/A';
+    }
+    if (body.day1_attended !== undefined) updates.day1_attended = Boolean(body.day1_attended);
+    if (body.day2_attended !== undefined) updates.day2_attended = Boolean(body.day2_attended);
+    if (body.day3_attended !== undefined) updates.day3_attended = Boolean(body.day3_attended);
+    if (body.day4_attended !== undefined) updates.day4_attended = Boolean(body.day4_attended);
+
+    const result = await databaseService.updateRegistration(id, updates);
+    if (!result.success) {
+      if (result.notFound) return res.status(404).json({ success: false, message: result.message });
+      if (result.duplicate) return res.status(409).json({ success: false, message: result.message });
+      return res.status(400).json({ success: false, message: result.message || 'Update failed.' });
+    }
+    return res.json({ success: true, message: 'Registration updated successfully.', data: result.row });
+  } catch (error) {
+    console.error('Update registration error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update registration.' });
+  }
+});
+
+// Admin: Delete a registration record
+app.delete('/api/registrations/:id', verifyToken, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid registration ID.' });
+    }
+    const result = await databaseService.deleteRegistration(id);
+    if (!result.success) {
+      return res.status(404).json({ success: false, message: result.message || 'Registration not found.' });
+    }
+    return res.json({ success: true, message: 'Registration deleted successfully.', deleted: result.deleted });
+  } catch (error) {
+    console.error('Delete registration error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to delete registration.' });
+  }
+});
+
 function formatPhoneForCsv(rawPhone) {
   if (!rawPhone || !String(rawPhone).trim() || String(rawPhone).trim().toLowerCase() === 'n/a') {
     return '""';
@@ -431,38 +661,47 @@ app.get('/api/export-csv', verifyToken, async (req, res) => {
     const headers = [
       '#',
       'Ticket ID',
+      'Title',
       'Full Name',
       'Phone Number',
-      'Attendee Status',
-      'Location',
-      'Email',
+      'Church / Organization',
+      'Day 1 (Tue 24)',
+      'Day 2 (Wed 25)',
+      'Day 3 (Thu 26)',
+      'Day 4 (Fri 27)',
+      'Days Attended',
       'SMS Sent',
-      'Email Sent',
       'Registered At'
     ];
 
     const rows = dataToExport.map((reg, idx) => {
       const ticketId = reg.ticket_id || reg.ticketId || reg['Ticket ID'] || '';
+      const title = reg.member_status || reg.memberStatus || '';
       const name = reg.name || reg.Name || '';
       const rawContact = reg.contact || reg.Contact || '';
       const formattedContact = formatPhoneForCsv(rawContact);
-      const status = reg.member_status || reg.memberStatus || reg['Member Status'] || 'Church Member';
-      const location = reg.location || reg.Location || '';
-      const email = reg.email || reg.Email || '';
+      const church = reg.location || reg.Location || 'N/A';
+      const d1 = reg.day1_attended === true ? 'Yes' : 'No';
+      const d2 = reg.day2_attended === true ? 'Yes' : 'No';
+      const d3 = reg.day3_attended === true ? 'Yes' : 'No';
+      const d4 = reg.day4_attended === true ? 'Yes' : 'No';
+      const totalDays = [reg.day1_attended, reg.day2_attended, reg.day3_attended, reg.day4_attended].filter(Boolean).length;
       const sSent = (reg.sms_sent === true || reg['SMS Sent'] === 'Yes' || reg.smsSent === true) ? 'Yes' : 'No';
-      const eSent = (reg.email_sent === true || reg['Email Sent'] === 'Yes' || reg.emailSent === true) ? 'Yes' : 'No';
       const regAt = reg.registration_date || reg.registered_at || reg.registeredAt || reg['Registered At'] || '';
       const dateStr = regAt ? new Date(regAt).toLocaleString('en-US') : '';
       return [
         idx + 1,
         csvEscape(ticketId),
+        csvEscape(title),
         csvEscape(name),
         formattedContact,
-        csvEscape(status),
-        csvEscape(location),
-        csvEscape(email),
+        csvEscape(church),
+        d1,
+        d2,
+        d3,
+        d4,
+        totalDays,
         sSent,
-        eSent,
         csvEscape(dateStr)
       ].join(',');
     });

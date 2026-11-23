@@ -29,26 +29,17 @@ async function postToMnotify(smsData) {
  * @param {string} downloadUrl - URL to download ticket
  * @returns {Promise<Object>} Response object with success status
  */
-async function sendRegistrationSMS(phoneNumber, name, ticketId, downloadUrl) {
+async function sendMessageViaMnotify(phoneNumber, message) {
   const apiKey = (process.env.MNOTIFY_API_KEY || '').trim();
   if (!apiKey) {
     console.error('❌ MNOTIFY_API_KEY is not configured');
     return { success: false, message: 'MNOTIFY_API_KEY is not configured' };
   }
 
-  // Format phone number to ensure it's in the correct format
   const formattedPhone = formatPhoneNumber(phoneNumber);
-
-  const formattedTicketId = String(ticketId || '').startsWith('CMBC26-')
-    ? String(ticketId)
-    : `CMBC26-${String(ticketId || '').replace(/^CMBC26-?/, '')}`;
-
-  const message = `Dear ${name}, Thank you for registering for CMBC 2026 (Church Growth & Missions Breakthrough Conference).\n\nYour Ticket ID is: ${formattedTicketId}\nGod bless you and see you from Tue 24th - Fri 27th NOVEMBER 2026 at Holy Hill Chapel AG, Faith Cathedral, Circle-Accra @ 6PM each night.`;
-
   const primarySender = (process.env.MNOTIFY_SENDER_ID || '').trim();
   const fallbackSender = (process.env.MNOTIFY_FALLBACK_SENDER_ID || 'HHC-SBM2026').trim();
 
-  // mNotify API payload structure
   const smsData = {
     key: apiKey,
     recipient: [formattedPhone],
@@ -62,7 +53,6 @@ async function sendRegistrationSMS(phoneNumber, name, ticketId, downloadUrl) {
     let response = await postToMnotify(smsData);
     console.log(`SMS API response (sender="${primarySender}"):`, response.data);
 
-    // If primary sender ID is rejected/unapproved, retry once immediately with approved fallback sender
     if (
       (!response.data || response.data.code !== '2000') &&
       fallbackSender &&
@@ -75,7 +65,6 @@ async function sendRegistrationSMS(phoneNumber, name, ticketId, downloadUrl) {
       console.log(`SMS API fallback response (sender="${fallbackSender}"):`, response.data);
     }
 
-    // Check if the API returned success
     if (response.data && response.data.code === '2000') {
       return {
         success: true,
@@ -91,13 +80,36 @@ async function sendRegistrationSMS(phoneNumber, name, ticketId, downloadUrl) {
     }
   } catch (error) {
     console.error('SMS sending error:', error.response?.data || error.message);
-
     return {
       success: false,
       message: error.response?.data?.message || error.message,
       error: error.response?.data || error.message
     };
   }
+}
+
+async function sendRegistrationSMS(phoneNumber, name, ticketId, downloadUrl) {
+  const formattedTicketId = String(ticketId || '').startsWith('CMBC26-')
+    ? String(ticketId)
+    : `CMBC26-${String(ticketId || '').replace(/^CMBC26-?/, '')}`;
+
+  const message = `Dear ${name}, Thank you for registering for CMBC 2026 (Church Growth & Missions Breakthrough Conference).\n\nYour Ticket ID is ${formattedTicketId}.\n\nGod bless you, and enjoy the conference!`;
+  return sendMessageViaMnotify(phoneNumber, message);
+}
+
+async function sendReturningCheckInSMS(phoneNumber, name, dayNumber) {
+  const day = parseInt(dayNumber, 10) || 2;
+  let message;
+  if (day === 2) {
+    message = `Dear ${name}, welcome to Day 2 of CMBC 2026 (Church Growth & Missions Breakthrough Conference)!\n\nWe are delighted to have you with us again. God bless you, and enjoy today's sessions!`;
+  } else if (day === 3) {
+    message = `Dear ${name}, welcome back to Day 3 of CMBC 2026 (Church Growth & Missions Breakthrough Conference)!\n\nThank you for your continued participation. God bless you, and have an impactful experience today!`;
+  } else if (day >= 4) {
+    message = `Dear ${name}, congratulations on making it to the final day of CMBC 2026 (Church Growth & Missions Breakthrough Conference)!\n\nThank you for being part of this impactful journey with us. God bless you, and enjoy the grand finale!`;
+  } else {
+    message = `Dear ${name}, welcome to Day 1 of CMBC 2026 (Church Growth & Missions Breakthrough Conference)!\n\nGod bless you, and enjoy today's sessions!`;
+  }
+  return sendMessageViaMnotify(phoneNumber, message);
 }
 
 /**
@@ -166,5 +178,7 @@ async function sendBulkRegistrationSMS(recipients) {
 
 module.exports = {
   sendRegistrationSMS,
-  sendBulkRegistrationSMS
+  sendReturningCheckInSMS,
+  sendBulkRegistrationSMS,
+  formatPhoneNumber
 };
