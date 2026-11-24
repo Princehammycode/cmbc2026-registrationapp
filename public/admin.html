@@ -15,7 +15,7 @@
     referrerpolicy="no-referrer">
   <link rel="icon" type="image/svg+xml" href="images/logo.svg?v=20261117">
   <link rel="apple-touch-icon" href="images/logo.svg?v=20261117">
-  <link rel="stylesheet" href="css/admin.css?v=20261123d">
+  <link rel="stylesheet" href="css/admin.css?v=20261124b">
 </head>
 
 <body>
@@ -45,10 +45,10 @@
               <span>Live System</span>
             </div>
             <div class="user-profile-badge">
-              <div class="user-avatar">A</div>
+              <div class="user-avatar" id="currentUserAvatar">A</div>
               <div class="user-meta">
-                <span class="user-name">Admin Portal</span>
-                <span class="user-role">Super Admin</span>
+                <span class="user-name" id="currentUserName">Admin Portal</span>
+                <span class="user-role" id="currentUserRole">Super Admin</span>
               </div>
             </div>
           </div>
@@ -75,7 +75,15 @@
           <span>Attendee Registrations</span>
           <span class="tab-badge" id="tabRegCount">0</span>
         </button>
+        <button type="button" class="tab-btn" id="tabUsers" data-view="users" role="tab"
+          aria-selected="false" style="display: none;">
+          <i class="fa-solid fa-user-shield"></i>
+          <span>User Management</span>
+          <span class="tab-badge" id="tabUsersCount">0</span>
+        </button>
       </nav>
+
+      <div id="registrationsView">
 
       <!-- Stats Grid -->
       <section class="stats-grid" id="statsGrid">
@@ -359,6 +367,46 @@
           </div>
         </div>
       </section>
+      </div><!-- /#registrationsView -->
+
+      <!-- User Management View (Super Admin Only) -->
+      <section class="table-card" id="usersView" style="display: none;">
+        <div class="table-card-head">
+          <div>
+            <h2 class="table-title">Admin User Management</h2>
+            <p class="table-subtitle">Create admin accounts, assign granular permissions, or disable access.</p>
+          </div>
+          <button type="button" class="btn btn-primary" id="openAddUserBtn">
+            <i class="fa-solid fa-user-plus"></i>
+            <span>Add Admin User</span>
+          </button>
+        </div>
+
+        <div class="table-scroll">
+          <table class="regs-table" id="usersTable">
+            <thead>
+              <tr>
+                <th style="width:48px">#</th>
+                <th><span>Username</span></th>
+                <th><span>Full Name</span></th>
+                <th><span>Permissions</span></th>
+                <th><span>Status</span></th>
+                <th><span>Last Login</span></th>
+                <th style="width:120px;text-align:center;"><span>Actions</span></th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody"></tbody>
+          </table>
+
+          <div class="empty-state hidden" id="usersEmptyState">
+            <div class="empty-icon">
+              <i class="fa-solid fa-user-shield"></i>
+            </div>
+            <h3 class="empty-title">No additional admin users yet</h3>
+            <p class="empty-desc">Click "Add Admin User" to create a new administrator and assign their permissions.</p>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -469,15 +517,114 @@
     </div>
   </div>
 
+  <!-- Add / Edit Admin User Modal -->
+  <div class="admin-modal" id="userFormModal" role="dialog" aria-modal="true" aria-labelledby="userFormModalTitle">
+    <div class="admin-modal-backdrop" data-close-admin-modal="userFormModal"></div>
+    <div class="admin-modal-panel">
+      <div class="admin-modal-head">
+        <h3 id="userFormModalTitle"><i class="fa-solid fa-user-plus"></i> Add Admin User</h3>
+        <button type="button" class="admin-modal-close" data-close-admin-modal="userFormModal" aria-label="Close">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <form id="adminUserForm">
+        <input type="hidden" id="editUserId">
+        <div class="admin-modal-body">
+          <div class="modal-form-grid">
+            <div class="modal-field">
+              <label for="userUsername">Username *</label>
+              <input type="text" id="userUsername" required minlength="3" maxlength="60" placeholder="e.g. usher_lead" autocomplete="off">
+            </div>
+            <div class="modal-field">
+              <label for="userFullName">Full Name *</label>
+              <input type="text" id="userFullName" required minlength="2" maxlength="100" placeholder="e.g. Kwame Mensah">
+            </div>
+          </div>
+          <div class="modal-form-grid">
+            <div class="modal-field">
+              <label for="userPassword" id="userPasswordLabel">Password *</label>
+              <div class="modal-password-wrap">
+                <input type="password" id="userPassword" minlength="6" maxlength="100" placeholder="Min 6 characters" autocomplete="new-password">
+                <button type="button" class="modal-password-toggle" id="toggleUserPassword" aria-label="Show password" aria-pressed="false" title="Show password">
+                  <i class="fa-solid fa-eye" id="toggleUserPasswordIcon"></i>
+                </button>
+              </div>
+            </div>
+            <div class="modal-field">
+              <label>Account Status</label>
+              <label class="day-check-item" style="height:42px;">
+                <input type="checkbox" id="userIsActive" checked>
+                <span>Active (can sign in)</span>
+              </label>
+            </div>
+          </div>
+          <div class="modal-field">
+            <label>Granted Permissions</label>
+            <div class="perm-checkbox-list">
+              <label class="day-check-item">
+                <input type="checkbox" name="userPerm" value="view_registrations" checked>
+                <span><strong>View Registrations</strong> &mdash; View dashboard, stats &amp; details</span>
+              </label>
+              <label class="day-check-item">
+                <input type="checkbox" name="userPerm" value="edit_registrations">
+                <span><strong>Edit Records</strong> &mdash; Edit attendee info &amp; Day 1&ndash;4 attendance</span>
+              </label>
+              <label class="day-check-item">
+                <input type="checkbox" name="userPerm" value="delete_registrations">
+                <span><strong>Delete Records</strong> &mdash; Permanently remove registrations</span>
+              </label>
+              <label class="day-check-item">
+                <input type="checkbox" name="userPerm" value="export_data">
+                <span><strong>Export Data</strong> &mdash; Download CSV summary reports</span>
+              </label>
+              <label class="day-check-item">
+                <input type="checkbox" name="userPerm" value="manage_users">
+                <span><strong>Manage Users</strong> &mdash; Add, edit, or remove admin users</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="admin-modal-foot">
+          <button type="button" class="btn btn-ghost" data-close-admin-modal="userFormModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveUserBtn">
+            <i class="fa-solid fa-floppy-disk"></i> Save User
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Admin User Confirmation Modal -->
+  <div class="admin-modal" id="deleteUserModal" role="dialog" aria-modal="true" aria-labelledby="deleteUserModalTitle">
+    <div class="admin-modal-backdrop" data-close-admin-modal="deleteUserModal"></div>
+    <div class="admin-modal-panel admin-modal-sm">
+      <div class="admin-modal-head">
+        <h3 id="deleteUserModalTitle"><i class="fa-solid fa-trash-can" style="color:#dc2626;"></i> Delete Admin User</h3>
+        <button type="button" class="admin-modal-close" data-close-admin-modal="deleteUserModal" aria-label="Close">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="admin-modal-body">
+        <p id="deleteUserConfirmText" style="color:var(--ash-700);line-height:1.5;">Are you sure you want to delete this admin user?</p>
+      </div>
+      <div class="admin-modal-foot">
+        <button type="button" class="btn btn-ghost" data-close-admin-modal="deleteUserModal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteUserBtn">
+          <i class="fa-solid fa-trash-can"></i> Delete User
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
   <div class="toast" id="toast" role="status" aria-live="polite">
     <i class="toast-icon fa-solid fa-circle-info"></i>
     <span class="toast-message"></span>
   </div>
 
-  <script src="js/config.js?v=20261123"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/admin.js?v=20261123d"></script>
+  <script src="js/config.js?v=20261124"></script>
+  <script src="js/auth.js?v=20261124"></script>
+  <script src="js/admin.js?v=20261124b"></script>
 </body>
 
 </html>

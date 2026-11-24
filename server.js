@@ -12,7 +12,15 @@ const excelService = require('./services/excelService');
 const dbService = require('./services/dbService');
 const databaseService = require('./services/databaseService');
 const keepAliveService = require('./services/keepAliveService');
-const { verifyToken, generateToken, verifyCredentials } = require('./middleware/auth');
+const {
+  ALL_PERMISSIONS,
+  hashPassword,
+  verifyPassword,
+  verifyToken,
+  requirePermission,
+  generateToken,
+  verifyCredentials
+} = require('./middleware/auth');
 const {
   loginLimiter,
   registrationValidation,
@@ -82,18 +90,60 @@ if (process.env.DATABASE_URL) {
 
 app.post('/api/admin/login', loginLimiter, async (req, res) => {
   try {
-    const { username, password } = req.body;
-    if (!verifyCredentials(username, password)) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid username or password'
+    const username = String((req.body && req.body.username) || '').trim();
+    const password = String((req.body && req.body.password) || '');
+
+    // 1. Check .env Super Admin credentials first
+    if (verifyCredentials(username, password)) {
+      const superUser = {
+        id: 0,
+        username,
+        fullName: 'Super Admin',
+        role: 'super_admin',
+        isSuperAdmin: true,
+        permissions: [...ALL_PERMISSIONS]
+      };
+      const token = generateToken(superUser);
+      return res.json({
+        success: true,
+        message: 'Login successful',
+        token,
+        user: superUser
       });
     }
-    const token = generateToken(username);
-    res.json({
-      success: true,
-      message: 'Login successful',
-      token
+
+    // 2. Check PostgreSQL admin_users table
+    if (process.env.DATABASE_URL) {
+      const dbUser = await databaseService.getAdminUserByUsername(username);
+      if (dbUser && verifyPassword(password, dbUser.password_hash)) {
+        if (!dbUser.is_active) {
+          return res.status(403).json({
+            success: false,
+            message: 'Your account has been disabled. Please contact the Super Admin.'
+          });
+        }
+        await databaseService.recordAdminLastLogin(dbUser.id).catch(() => {});
+        const userObj = {
+          id: dbUser.id,
+          username: dbUser.username,
+          fullName: dbUser.full_name,
+          role: dbUser.role || 'admin',
+          isSuperAdmin: false,
+          permissions: Array.isArray(dbUser.permissions) ? dbUser.permissions : []
+        };
+        const token = generateToken(userObj);
+        return res.json({
+          success: true,
+          message: 'Login successful',
+          token,
+          user: userObj
+        });
+      }
+    }
+
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid username or password'
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -101,6 +151,184 @@ app.post('/api/admin/login', loginLimiter, async (req, res) => {
       success: false,
       message: 'Login failed. Please try again.'
     });
+  }
+});
+
+// Live session profile & permissions check
+app.get('/api/admin/me', verifyToken, async (req, res) => {
+  try {
+    if (req.user.isSuperAdmin || req.user.role === 'super_admin') {
+      return res.json({
+        success: true,
+        user: {
+          id: 0,
+          username: req.user.username,
+          fullName: 'Super Admin',
+          role: 'super_admin',
+          isSuperAdmin: true,
+          permissions: [...ALL_PERMISSIONS]
+        }
+      });
+    }
+    if (process.env.DATABASE_URL && req.user.id) {
+      const dbUser = await databaseService.getAdminUserById(req.user.id);
+      if (!dbUser || !dbUser.is_active) {
+        return res.status(401).json({
+          success: false,
+          message: 'Account is disabled or no longer exists.'
+        });
+      }
+      return res.json({
+        success: true,
+        user: {
+          id: dbUser.id,
+          username: dbUser.username,
+          fullName: dbUser.full_name,
+          role: dbUser.role || 'admin',
+          isSuperAdmin: false,
+          permissions: Array.isArray(dbUser.permissions) ? dbUser.permissions : []
+        }
+      });
+    }
+    return res.json({ success: true, user: req.user });
+  } catch (error) {
+    console.error('Error fetching current admin profile:', error);
+    return res.status(500).json({ success: false, message: 'Failed to verify session.' });
+  }
+});
+
+// User Management CRUD Endpoints (Super Admin / manage_users permission)
+app.get('/api/admin/users', verifyToken, requirePermission('manage_users'), async (req, res) => {
+  try {
+    const users = await databaseService.getAllAdminUsers();
+    res.json({ success: true, data: users });
+  } catch (error) {
+    console.error('Error fetching admin users:', error);
+    res.status(500).json({ success: false, message: 'Failed to load admin users.' });
+  }
+});
+
+app.post('/api/admin/users', verifyToken, requirePermission('manage_users'), async (req, res) => {
+  try {
+    const body = req.body || {};
+    const username = sanitizeInput(String(body.username || '').trim());
+    const fullName = sanitizeInput(String(body.fullName || '').trim());
+    const password = String(body.password || '');
+    const rawPerms = Array.isArray(body.permissions) ? body.permissions : ['view_registrations'];
+    const permissions = rawPerms.filter((p) => ALL_PERMISSIONS.includes(p));
+    const isActive = body.isActive !== undefined ? Boolean(body.isActive) : true;
+
+    if (!username || username.length < 3 || !/^[a-zA-Z0-9._-]+$/.test(username)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username must be at least 3 characters (letters, numbers, dots, hyphens, underscores).'
+      });
+    }
+    const envSuper = (process.env.ADMIN_USERNAME || 'admin').trim().toLowerCase();
+    if (username.toLowerCase() === envSuper) {
+      return res.status(409).json({
+        success: false,
+        message: 'This username is reserved for the Super Admin.'
+      });
+    }
+    if (!fullName || fullName.length < 2) {
+      return res.status(400).json({ success: false, message: 'Full name is required.' });
+    }
+    if (!password || password.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
+    }
+    if (permissions.length === 0) {
+      permissions.push('view_registrations');
+    }
+
+    const passwordHash = hashPassword(password);
+    const result = await databaseService.createAdminUser({
+      username,
+      fullName,
+      passwordHash,
+      permissions,
+      isActive,
+      createdBy: req.user.username
+    });
+    if (!result.success) {
+      return res.status(result.duplicate ? 409 : 400).json({ success: false, message: result.message });
+    }
+    return res.status(201).json({ success: true, message: 'Admin user created successfully.', data: result.user });
+  } catch (error) {
+    console.error('Create admin user error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to create admin user.' });
+  }
+});
+
+app.put('/api/admin/users/:id', verifyToken, requirePermission('manage_users'), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid user ID.' });
+    }
+    const body = req.body || {};
+    const updates = {};
+
+    if (body.username !== undefined) {
+      const username = sanitizeInput(String(body.username).trim());
+      if (username.length < 3 || !/^[a-zA-Z0-9._-]+$/.test(username)) {
+        return res.status(400).json({ success: false, message: 'Invalid username format.' });
+      }
+      const envSuper = (process.env.ADMIN_USERNAME || 'admin').trim().toLowerCase();
+      if (username.toLowerCase() === envSuper) {
+        return res.status(409).json({ success: false, message: 'This username is reserved for the Super Admin.' });
+      }
+      updates.username = username;
+    }
+    if (body.fullName !== undefined) {
+      const fullName = sanitizeInput(String(body.fullName).trim());
+      if (fullName.length < 2) {
+        return res.status(400).json({ success: false, message: 'Full name is required.' });
+      }
+      updates.fullName = fullName;
+    }
+    if (body.password && String(body.password).length > 0) {
+      if (String(body.password).length < 6) {
+        return res.status(400).json({ success: false, message: 'New password must be at least 6 characters.' });
+      }
+      updates.passwordHash = hashPassword(body.password);
+    }
+    if (Array.isArray(body.permissions)) {
+      updates.permissions = body.permissions.filter((p) => ALL_PERMISSIONS.includes(p));
+    }
+    if (body.isActive !== undefined) {
+      updates.isActive = Boolean(body.isActive);
+    }
+
+    const result = await databaseService.updateAdminUser(id, updates);
+    if (!result.success) {
+      const status = result.notFound ? 404 : result.duplicate ? 409 : 400;
+      return res.status(status).json({ success: false, message: result.message });
+    }
+    return res.json({ success: true, message: 'Admin user updated successfully.', data: result.user });
+  } catch (error) {
+    console.error('Update admin user error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update admin user.' });
+  }
+});
+
+app.delete('/api/admin/users/:id', verifyToken, requirePermission('manage_users'), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid user ID.' });
+    }
+    if (req.user.id && req.user.id === id) {
+      return res.status(400).json({ success: false, message: 'You cannot delete your own account.' });
+    }
+    const result = await databaseService.deleteAdminUser(id);
+    if (!result.success) {
+      return res.status(404).json({ success: false, message: result.message });
+    }
+    return res.json({ success: true, message: 'Admin user deleted successfully.' });
+  } catch (error) {
+    console.error('Delete admin user error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to delete admin user.' });
   }
 });
 
@@ -354,7 +582,7 @@ app.post(
   }
 );
 
-app.get('/api/registrations', verifyToken, async (req, res) => {
+app.get('/api/registrations', verifyToken, requirePermission('view_registrations'), async (req, res) => {
   try {
     let registrations;
     if (process.env.DATABASE_URL) {
@@ -534,7 +762,7 @@ app.post('/api/checkin', async (req, res) => {
 });
 
 // Admin: Edit a registration record
-app.put('/api/registrations/:id', verifyToken, async (req, res) => {
+app.put('/api/registrations/:id', verifyToken, requirePermission('edit_registrations'), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!id || Number.isNaN(id)) {
@@ -581,7 +809,7 @@ app.put('/api/registrations/:id', verifyToken, async (req, res) => {
 });
 
 // Admin: Delete a registration record
-app.delete('/api/registrations/:id', verifyToken, async (req, res) => {
+app.delete('/api/registrations/:id', verifyToken, requirePermission('delete_registrations'), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!id || Number.isNaN(id)) {
@@ -618,7 +846,7 @@ function formatPhoneForCsv(rawPhone) {
   return `="${localPhone}"`;
 }
 
-app.get('/api/export-csv', verifyToken, async (req, res) => {
+app.get('/api/export-csv', verifyToken, requirePermission('export_data'), async (req, res) => {
   try {
     let registrations;
     if (process.env.DATABASE_URL) {
@@ -722,7 +950,7 @@ app.get('/api/export-csv', verifyToken, async (req, res) => {
   }
 });
 
-app.get('/api/stats', verifyToken, async (req, res) => {
+app.get('/api/stats', verifyToken, requirePermission('view_registrations'), async (req, res) => {
   try {
     let stats;
     if (process.env.DATABASE_URL) {

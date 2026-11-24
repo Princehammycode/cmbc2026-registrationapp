@@ -2553,3 +2553,121 @@ body {
   border-color: var(--pink-600);
   color: #ffffff;
 }
+
+
+/* ==========================================================================
+   USER MANAGEMENT PERMISSIONS & ACTION BUTTONS
+   ========================================================================== */
+.perm-checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.perm-checkbox-list .day-check-item span {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ash-700);
+}
+
+.perm-checkbox-list .day-check-item strong {
+  color: var(--ash-950);
+  font-weight: 700;
+}
+
+.perm-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-width: 340px;
+  white-space: normal;
+}
+
+.perm-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--info-bg);
+  color: var(--info-text);
+  border: 1px solid var(--info-border);
+}
+
+.perm-badge.perm-danger {
+  background: var(--err-bg);
+  color: var(--err-text);
+  border-color: var(--err-border);
+}
+
+.perm-badge.perm-admin {
+  background: var(--purple-bg);
+  color: var(--purple-text);
+  border-color: var(--purple-border);
+}
+
+.user-action-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.user-icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1.5px solid var(--ash-300);
+  background: #ffffff;
+  color: var(--ash-700);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all var(--t-fast) var(--ease);
+}
+
+.user-icon-btn:hover {
+  border-color: var(--pink-600);
+  color: var(--pink-600);
+  background: var(--pink-50);
+}
+
+.user-icon-btn.danger:hover {
+  border-color: #dc2626;
+  color: #dc2626;
+  background: #fef2f2;
+}
+
+.modal-password-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.modal-password-wrap input {
+  padding-right: 42px;
+}
+
+.modal-password-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ash-500);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+
+.modal-password-toggle:hover,
+.modal-password-toggle:focus-visible {
+  color: var(--pink-600);
+  background: var(--pink-50);
+  outline: none;
+}

@@ -27,6 +27,25 @@
   let isFetching = false;
   let pendingDeleteId = null;
 
+  let currentUser = { username: 'admin', fullName: 'Super Admin', role: 'super_admin', isSuperAdmin: true, permissions: [] };
+  let allAdminUsers = [];
+  let pendingDeleteUserId = null;
+  let activeDashboardTab = 'registrations';
+
+  const PERM_LABELS = {
+    view_registrations: { label: 'View Records', cls: '' },
+    edit_registrations: { label: 'Edit Records', cls: '' },
+    delete_registrations: { label: 'Delete Records', cls: 'perm-danger' },
+    export_data: { label: 'Export CSV', cls: '' },
+    manage_users: { label: 'Manage Users', cls: 'perm-admin' }
+  };
+
+  function hasPermission(perm) {
+    if (!currentUser) return false;
+    if (currentUser.isSuperAdmin === true || currentUser.role === 'super_admin') return true;
+    return Array.isArray(currentUser.permissions) && currentUser.permissions.includes(perm);
+  }
+
   const DAY_LABELS = {
     1: 'Tue Nov 24th - Day 1',
     2: 'Wed Nov 25th - Day 2',
@@ -469,6 +488,8 @@
         closeAdminModal('viewRecordModal');
         closeAdminModal('editRecordModal');
         closeAdminModal('deleteRecordModal');
+        closeAdminModal('userFormModal');
+        closeAdminModal('deleteUserModal');
       }
     });
   }
@@ -760,7 +781,10 @@
         : '<span class="status-badge pending"><i class="fa-regular fa-clock"></i> Pending</span>';
       const regAt = escapeHtml(formatDate(reg.registration_date || reg.created_at));
 
-      return `
+        const canEdit = hasPermission('edit_registrations');
+        const canDelete = hasPermission('delete_registrations');
+
+        return `
         <tr>
           <td class="row-num">${num}</td>
           <td class="ticket-pill"><code>${ticketId}</code></td>
@@ -783,12 +807,12 @@
                 <button type="button" class="row-action-item" data-action="view" data-id="${id}">
                   <i class="fa-solid fa-eye"></i><span>View Full Details</span>
                 </button>
-                <button type="button" class="row-action-item" data-action="edit" data-id="${id}">
+                ${canEdit ? `<button type="button" class="row-action-item" data-action="edit" data-id="${id}">
                   <i class="fa-solid fa-pen-to-square"></i><span>Edit Record</span>
-                </button>
-                <button type="button" class="row-action-item danger" data-action="delete" data-id="${id}">
+                </button>` : ''}
+                ${canDelete ? `<button type="button" class="row-action-item danger" data-action="delete" data-id="${id}">
                   <i class="fa-solid fa-trash-can"></i><span>Delete Record</span>
-                </button>
+                </button>` : ''}
               </div>
             </div>
           </td>
@@ -1162,7 +1186,320 @@
     }
   }
 
-  function init() {
+  // =========================================================================
+  // USER MANAGEMENT (SUPER ADMIN / manage_users PERMISSION)
+  // =========================================================================
+  async function loadCurrentUserProfile() {
+    try {
+      const cached = localStorage.getItem('adminUser');
+      if (cached) {
+        currentUser = JSON.parse(cached);
+        applyUserPermissionsUI();
+      }
+    } catch (_) {}
+
+    try {
+      const res = await fetch(`${getApiUrl()}/admin/me`, {
+        headers: getAuthHeaders(),
+        cache: 'no-store'
+      });
+      if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem('adminToken');
+        localStorage.removeItem('adminUser');
+        window.location.replace('/login');
+        return false;
+      }
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && data.user) {
+          currentUser = data.user;
+          localStorage.setItem('adminUser', JSON.stringify(currentUser));
+          applyUserPermissionsUI();
+        }
+      }
+      return true;
+    } catch (err) {
+      console.error('Failed to load admin profile:', err);
+      return true;
+    }
+  }
+
+  function applyUserPermissionsUI() {
+    const avatarEl = document.getElementById('currentUserAvatar');
+    const nameEl = document.getElementById('currentUserName');
+    const roleEl = document.getElementById('currentUserRole');
+    const tabUsers = document.getElementById('tabUsers');
+    const exportWrap = document.getElementById('exportDropdownWrap');
+
+    const displayName = currentUser.fullName || currentUser.username || 'Admin';
+    if (avatarEl) avatarEl.textContent = displayName.charAt(0).toUpperCase();
+    if (nameEl) nameEl.textContent = displayName;
+    if (roleEl) roleEl.textContent = (currentUser.isSuperAdmin || currentUser.role === 'super_admin') ? 'Super Admin' : 'Admin User';
+
+    if (tabUsers) {
+      tabUsers.style.display = hasPermission('manage_users') ? 'inline-flex' : 'none';
+    }
+    if (exportWrap) {
+      exportWrap.style.display = hasPermission('export_data') ? '' : 'none';
+    }
+  }
+
+  function switchDashboardTab(tab) {
+    activeDashboardTab = tab === 'users' && hasPermission('manage_users') ? 'users' : 'registrations';
+    const tabReg = document.getElementById('tabRegistrations');
+    const tabUsers = document.getElementById('tabUsers');
+    const regView = document.getElementById('registrationsView');
+    const usersView = document.getElementById('usersView');
+
+    if (tabReg) {
+      tabReg.classList.toggle('active', activeDashboardTab === 'registrations');
+      tabReg.setAttribute('aria-selected', String(activeDashboardTab === 'registrations'));
+    }
+    if (tabUsers) {
+      tabUsers.classList.toggle('active', activeDashboardTab === 'users');
+      tabUsers.setAttribute('aria-selected', String(activeDashboardTab === 'users'));
+    }
+    if (regView) regView.style.display = activeDashboardTab === 'registrations' ? '' : 'none';
+    if (usersView) usersView.style.display = activeDashboardTab === 'users' ? '' : 'none';
+
+    if (activeDashboardTab === 'users') {
+      loadAdminUsers();
+    }
+  }
+
+  async function loadAdminUsers() {
+    if (!hasPermission('manage_users')) return;
+    try {
+      const res = await fetch(`${getApiUrl()}/admin/users`, {
+        headers: getAuthHeaders(),
+        cache: 'no-store'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        allAdminUsers = Array.isArray(data.data) ? data.data : [];
+        const badge = document.getElementById('tabUsersCount');
+        if (badge) badge.textContent = formatCount(allAdminUsers.length);
+        renderAdminUsersTable();
+      }
+    } catch (err) {
+      console.error('Error loading admin users:', err);
+    }
+  }
+
+  function renderAdminUsersTable() {
+    const tbody = document.getElementById('usersTableBody');
+    const emptyState = document.getElementById('usersEmptyState');
+    if (!tbody) return;
+
+    if (allAdminUsers.length === 0) {
+      tbody.innerHTML = '';
+      if (emptyState) emptyState.classList.remove('hidden');
+      return;
+    }
+    if (emptyState) emptyState.classList.add('hidden');
+
+    tbody.innerHTML = allAdminUsers.map((u, idx) => {
+      const perms = Array.isArray(u.permissions) ? u.permissions : [];
+      const permHtml = perms.map((p) => {
+        const meta = PERM_LABELS[p] || { label: p, cls: '' };
+        return `<span class="perm-badge ${meta.cls}">${escapeHtml(meta.label)}</span>`;
+      }).join('');
+      const statusBadge = u.is_active
+        ? '<span class="status-badge sent"><i class="fa-solid fa-check"></i> Active</span>'
+        : '<span class="status-badge pending"><i class="fa-solid fa-ban"></i> Disabled</span>';
+      const lastLogin = u.last_login_at ? escapeHtml(formatDate(u.last_login_at)) : '<span class="muted">Never</span>';
+
+      return `
+        <tr>
+          <td class="row-num">${idx + 1}</td>
+          <td class="ticket-pill"><code>${escapeHtml(u.username)}</code></td>
+          <td><span class="attendee-name">${escapeHtml(u.full_name)}</span></td>
+          <td><div class="perm-badges">${permHtml || '<span class="muted">None</span>'}</div></td>
+          <td>${statusBadge}</td>
+          <td><span class="date-text">${lastLogin}</span></td>
+          <td style="text-align:center;">
+            <div class="user-action-btns">
+              <button type="button" class="user-icon-btn" data-user-action="edit" data-user-id="${u.id}" title="Edit User & Permissions">
+                <i class="fa-solid fa-pen-to-square"></i>
+              </button>
+              <button type="button" class="user-icon-btn danger" data-user-action="delete" data-user-id="${u.id}" title="Delete User">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function resetUserPasswordVisibility() {
+    const pwdEl = document.getElementById('userPassword');
+    const toggleBtn = document.getElementById('toggleUserPassword');
+    const iconEl = document.getElementById('toggleUserPasswordIcon');
+    if (pwdEl) pwdEl.type = 'password';
+    if (iconEl) {
+      iconEl.classList.remove('fa-eye-slash');
+      iconEl.classList.add('fa-eye');
+    }
+    if (toggleBtn) {
+      toggleBtn.setAttribute('aria-pressed', 'false');
+      toggleBtn.setAttribute('aria-label', 'Show password');
+      toggleBtn.setAttribute('title', 'Show password');
+    }
+  }
+
+  function openAddUserModal() {
+    document.getElementById('editUserId').value = '';
+    document.getElementById('userFormModalTitle').innerHTML = '<i class="fa-solid fa-user-plus"></i> Add Admin User';
+    document.getElementById('userUsername').value = '';
+    document.getElementById('userFullName').value = '';
+    const pwdEl = document.getElementById('userPassword');
+    const pwdLabel = document.getElementById('userPasswordLabel');
+    if (pwdEl) { pwdEl.value = ''; pwdEl.required = true; pwdEl.placeholder = 'Min 6 characters'; }
+    if (pwdLabel) pwdLabel.textContent = 'Password *';
+    resetUserPasswordVisibility();
+    document.getElementById('userIsActive').checked = true;
+    document.querySelectorAll('input[name="userPerm"]').forEach((cb) => {
+      cb.checked = cb.value === 'view_registrations';
+    });
+    openAdminModal('userFormModal');
+  }
+
+  function openEditUserModal(id) {
+    const u = allAdminUsers.find((item) => String(item.id) === String(id));
+    if (!u) return;
+    document.getElementById('editUserId').value = u.id;
+    document.getElementById('userFormModalTitle').innerHTML = '<i class="fa-solid fa-user-pen"></i> Edit Admin User';
+    document.getElementById('userUsername').value = u.username || '';
+    document.getElementById('userFullName').value = u.full_name || '';
+    const pwdEl = document.getElementById('userPassword');
+    const pwdLabel = document.getElementById('userPasswordLabel');
+    if (pwdEl) { pwdEl.value = ''; pwdEl.required = false; pwdEl.placeholder = 'Leave blank to keep current'; }
+    if (pwdLabel) pwdLabel.textContent = 'Reset Password (optional)';
+    resetUserPasswordVisibility();
+    document.getElementById('userIsActive').checked = Boolean(u.is_active);
+    const perms = Array.isArray(u.permissions) ? u.permissions : [];
+    document.querySelectorAll('input[name="userPerm"]').forEach((cb) => {
+      cb.checked = perms.includes(cb.value);
+    });
+    openAdminModal('userFormModal');
+  }
+
+  function openDeleteUserModal(id) {
+    const u = allAdminUsers.find((item) => String(item.id) === String(id));
+    if (!u) return;
+    pendingDeleteUserId = u.id;
+    const textEl = document.getElementById('deleteUserConfirmText');
+    if (textEl) {
+      textEl.textContent = `Are you sure you want to permanently delete admin user "${u.full_name}" (@${u.username})?`;
+    }
+    openAdminModal('deleteUserModal');
+  }
+
+  function setupUserManagementListeners() {
+    document.getElementById('tabRegistrations')?.addEventListener('click', () => switchDashboardTab('registrations'));
+    document.getElementById('tabUsers')?.addEventListener('click', () => switchDashboardTab('users'));
+    document.getElementById('openAddUserBtn')?.addEventListener('click', openAddUserModal);
+
+    document.getElementById('toggleUserPassword')?.addEventListener('click', () => {
+      const pwdEl = document.getElementById('userPassword');
+      const toggleBtn = document.getElementById('toggleUserPassword');
+      const iconEl = document.getElementById('toggleUserPasswordIcon');
+      if (!pwdEl) return;
+      const isHidden = pwdEl.type === 'password';
+      pwdEl.type = isHidden ? 'text' : 'password';
+      if (iconEl) {
+        iconEl.classList.toggle('fa-eye', !isHidden);
+        iconEl.classList.toggle('fa-eye-slash', isHidden);
+      }
+      if (toggleBtn) {
+        toggleBtn.setAttribute('aria-pressed', String(isHidden));
+        toggleBtn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+        toggleBtn.setAttribute('title', isHidden ? 'Hide password' : 'Show password');
+      }
+    });
+
+    document.getElementById('usersTableBody')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-user-action]');
+      if (!btn) return;
+      const action = btn.getAttribute('data-user-action');
+      const id = btn.getAttribute('data-user-id');
+      if (action === 'edit') openEditUserModal(id);
+      else if (action === 'delete') openDeleteUserModal(id);
+    });
+
+    document.getElementById('adminUserForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('editUserId').value;
+      const saveBtn = document.getElementById('saveUserBtn');
+      const perms = Array.from(document.querySelectorAll('input[name="userPerm"]:checked')).map((cb) => cb.value);
+      if (perms.length === 0) {
+        showToast('Please select at least one permission.', 'warn');
+        return;
+      }
+
+      const payload = {
+        username: document.getElementById('userUsername').value.trim(),
+        fullName: document.getElementById('userFullName').value.trim(),
+        isActive: document.getElementById('userIsActive').checked,
+        permissions: perms
+      };
+      const pwd = document.getElementById('userPassword').value;
+      if (pwd) payload.password = pwd;
+
+      if (saveBtn) saveBtn.disabled = true;
+      try {
+        const url = id ? `${getApiUrl()}/admin/users/${id}` : `${getApiUrl()}/admin/users`;
+        const method = id ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+          method,
+          headers: getAuthHeaders(),
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+          showToast(data.message || 'Failed to save admin user.', 'err');
+          return;
+        }
+        closeAdminModal('userFormModal');
+        showToast(id ? 'Admin user updated.' : 'Admin user created successfully.', 'ok');
+        await loadAdminUsers();
+      } catch (err) {
+        console.error(err);
+        showToast('Network error saving user.', 'err');
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+      }
+    });
+
+    document.getElementById('confirmDeleteUserBtn')?.addEventListener('click', async () => {
+      if (!pendingDeleteUserId) return;
+      const btn = document.getElementById('confirmDeleteUserBtn');
+      if (btn) btn.disabled = true;
+      try {
+        const res = await fetch(`${getApiUrl()}/admin/users/${pendingDeleteUserId}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+          showToast(data.message || 'Failed to delete admin user.', 'err');
+          return;
+        }
+        pendingDeleteUserId = null;
+        closeAdminModal('deleteUserModal');
+        showToast('Admin user deleted.', 'ok');
+        await loadAdminUsers();
+      } catch (err) {
+        console.error(err);
+        showToast('Network error deleting user.', 'err');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+  }
+
+  async function init() {
     const token = localStorage.getItem('adminToken');
     if (!token) {
       window.location.replace('/login');
@@ -1179,8 +1516,16 @@
 
     setupFiltersAndMenus();
     setupTableAndModalListeners();
+    setupUserManagementListeners();
     setupAutoRefresh();
-    loadRegistrationsData();
+
+    const ok = await loadCurrentUserProfile();
+    if (!ok) return;
+
+    await loadRegistrationsData();
+    if (hasPermission('manage_users')) {
+      loadAdminUsers();
+    }
   }
 
   window.refreshData = function () {

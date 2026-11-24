@@ -149,7 +149,28 @@ async function initializeDatabase() {
       `);
     } catch (_) { }
 
-    console.log('✅ Database table (registrations) initialized with unique phone & multi-day attendance');
+    // Create admin_users table for role-based User Management
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin_users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(100) NOT NULL UNIQUE,
+        full_name VARCHAR(255) NOT NULL,
+        password_hash TEXT NOT NULL,
+        role VARCHAR(50) NOT NULL DEFAULT 'admin',
+        permissions JSONB NOT NULL DEFAULT '["view_registrations"]'::jsonb,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_by VARCHAR(100),
+        last_login_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_admin_users_username_lower
+        ON admin_users(LOWER(TRIM(username)))
+    `);
+
+    console.log('✅ Database tables (registrations & admin_users) initialized');
   } catch (error) {
     console.error('❌ Database initialization error:', error);
     throw error;
@@ -670,6 +691,130 @@ async function getNewConvertsStatistics() {
   }
 }
 
+async function getAdminUserByUsername(username) {
+  const client = await pool.connect();
+  try {
+    const res = await client.query(
+      'SELECT * FROM admin_users WHERE LOWER(TRIM(username)) = LOWER(TRIM($1)) LIMIT 1',
+      [String(username || '').trim()]
+    );
+    return res.rows[0] || null;
+  } finally {
+    client.release();
+  }
+}
+
+async function getAdminUserById(id) {
+  const client = await pool.connect();
+  try {
+    const res = await client.query(
+      'SELECT id, username, full_name, role, permissions, is_active, created_by, last_login_at, created_at, updated_at FROM admin_users WHERE id = $1 LIMIT 1',
+      [id]
+    );
+    return res.rows[0] || null;
+  } finally {
+    client.release();
+  }
+}
+
+async function getAllAdminUsers() {
+  const client = await pool.connect();
+  try {
+    const res = await client.query(
+      'SELECT id, username, full_name, role, permissions, is_active, created_by, last_login_at, created_at, updated_at FROM admin_users ORDER BY created_at DESC'
+    );
+    return res.rows;
+  } finally {
+    client.release();
+  }
+}
+
+async function createAdminUser({ username, fullName, passwordHash, permissions, isActive = true, createdBy }) {
+  const client = await pool.connect();
+  try {
+    const existing = await client.query(
+      'SELECT id FROM admin_users WHERE LOWER(TRIM(username)) = LOWER(TRIM($1)) LIMIT 1',
+      [username]
+    );
+    if (existing.rows.length > 0) {
+      return { success: false, duplicate: true, message: 'A user with this username already exists.' };
+    }
+    const res = await client.query(
+      `INSERT INTO admin_users (username, full_name, password_hash, role, permissions, is_active, created_by)
+       VALUES ($1, $2, $3, 'admin', $4::jsonb, $5, $6)
+       RETURNING id, username, full_name, role, permissions, is_active, created_by, last_login_at, created_at, updated_at`,
+      [username.trim(), fullName.trim(), passwordHash, JSON.stringify(permissions), Boolean(isActive), createdBy || 'admin']
+    );
+    return { success: true, user: res.rows[0] };
+  } finally {
+    client.release();
+  }
+}
+
+async function updateAdminUser(id, updates) {
+  const client = await pool.connect();
+  try {
+    const existingRes = await client.query('SELECT * FROM admin_users WHERE id = $1', [id]);
+    if (existingRes.rows.length === 0) {
+      return { success: false, notFound: true, message: 'Admin user not found.' };
+    }
+    const cur = existingRes.rows[0];
+    const newUsername = updates.username !== undefined ? String(updates.username).trim() : cur.username;
+    const newFullName = updates.fullName !== undefined ? String(updates.fullName).trim() : cur.full_name;
+    const newPasswordHash = updates.passwordHash ? updates.passwordHash : cur.password_hash;
+    const newPerms = Array.isArray(updates.permissions) ? updates.permissions : cur.permissions;
+    const newActive = updates.isActive !== undefined ? Boolean(updates.isActive) : cur.is_active;
+
+    if (newUsername.toLowerCase() !== cur.username.toLowerCase()) {
+      const conflict = await client.query(
+        'SELECT id FROM admin_users WHERE LOWER(TRIM(username)) = LOWER(TRIM($1)) AND id <> $2 LIMIT 1',
+        [newUsername, id]
+      );
+      if (conflict.rows.length > 0) {
+        return { success: false, duplicate: true, message: 'Another user already has this username.' };
+      }
+    }
+
+    const res = await client.query(
+      `UPDATE admin_users
+       SET username = $1,
+           full_name = $2,
+           password_hash = $3,
+           permissions = $4::jsonb,
+           is_active = $5,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $6
+       RETURNING id, username, full_name, role, permissions, is_active, created_by, last_login_at, created_at, updated_at`,
+      [newUsername, newFullName, newPasswordHash, JSON.stringify(newPerms), newActive, id]
+    );
+    return { success: true, user: res.rows[0] };
+  } finally {
+    client.release();
+  }
+}
+
+async function deleteAdminUser(id) {
+  const client = await pool.connect();
+  try {
+    const res = await client.query('DELETE FROM admin_users WHERE id = $1 RETURNING id, username', [id]);
+    if (res.rows.length === 0) {
+      return { success: false, notFound: true, message: 'Admin user not found.' };
+    }
+    return { success: true, deleted: res.rows[0] };
+  } finally {
+    client.release();
+  }
+}
+
+async function recordAdminLastLogin(id) {
+  const client = await pool.connect();
+  try {
+    await client.query('UPDATE admin_users SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
+  } finally {
+    client.release();
+  }
+}
+
 async function closePool() {
   await pool.end();
   console.log('✅ PostgreSQL pool closed');
@@ -693,6 +838,13 @@ module.exports = {
   isContactRegistered,
   isContactRegisteredAny,
   normalizeContact,
+  getAdminUserByUsername,
+  getAdminUserById,
+  getAllAdminUsers,
+  createAdminUser,
+  updateAdminUser,
+  deleteAdminUser,
+  recordAdminLastLogin,
   closePool
 };
 

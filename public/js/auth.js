@@ -63,6 +63,9 @@
 
         if (response.ok && data.success && data.token) {
           localStorage.setItem('adminToken', data.token);
+          if (data.user) {
+            localStorage.setItem('adminUser', JSON.stringify(data.user));
+          }
           window.location.replace('/admin-dashboard');
         } else {
           if (errorMessage) {
