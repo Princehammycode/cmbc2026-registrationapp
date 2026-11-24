@@ -2342,13 +2342,32 @@ input[type=number] {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   font-family: var(--font-heading);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--gold-400);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.program-heading {
+  font-family: var(--font-heading);
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.05;
+  color: #ffffff;
+  margin-bottom: 6px;
+  text-shadow: 0 2px 14px rgba(2, 8, 30, 0.45);
+}
+
+.program-heading .program-year {
+  background: linear-gradient(135deg, #fef08a 0%, var(--gold-400) 52%, var(--gold-500) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 10px rgba(250, 204, 21, 0.28));
 }
 
 .eyebrow-dot {
@@ -2376,12 +2395,12 @@ input[type=number] {
 
 .form-title {
   font-family: var(--font-heading);
-  font-size: 32px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-  color: #ffffff;
-  margin-bottom: 6px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  color: rgba(255, 255, 255, 0.94);
+  margin-bottom: 4px;
 }
 
 .form-subtitle {
@@ -2589,8 +2608,13 @@ input[type=number] {
     padding: 22px 22px 24px;
   }
 
+  .program-heading {
+    font-size: 31px;
+    margin-bottom: 5px;
+  }
+
   .form-title {
-    font-size: 27px;
+    font-size: 16.5px;
   }
 
   .event-chips {
@@ -2903,13 +2927,18 @@ input[type=number] {
   }
 
   .form-eyebrow {
-    font-size: 13.5px;
-    margin-bottom: 12px;
+    font-size: 13px;
+    margin-bottom: 8px;
+  }
+
+  .program-heading {
+    font-size: 46px;
+    margin-bottom: 8px;
   }
 
   .form-title {
-    font-size: 44px;
-    margin-bottom: 8px;
+    font-size: 23px;
+    margin-bottom: 6px;
   }
 
   .form-subtitle {
