@@ -24,6 +24,7 @@
   let currentMode = 'new'; // 'new' | 'returning'
   let verifiedAttendee = null;
   let pendingDuplicatePhone = '';
+  let pendingRetryAction = null;
 
   const modeNewBtn = document.getElementById('modeNewBtn');
   const modeReturningBtn = document.getElementById('modeReturningBtn');
@@ -32,6 +33,55 @@
   const verifiedTicketTag = document.getElementById('verifiedTicketTag');
   const verifiedDayPills = document.getElementById('verifiedDayPills');
   const switchToCheckInBtn = document.getElementById('switchToCheckInBtn');
+  const errorRetryBtn = document.getElementById('errorRetryBtn');
+
+  async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      const offlineErr = new Error('OFFLINE');
+      offlineErr.code = 'OFFLINE';
+      throw offlineErr;
+    }
+    const controller = new AbortController();
+    const timerId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        const timeoutErr = new Error('TIMEOUT');
+        timeoutErr.code = 'TIMEOUT';
+        throw timeoutErr;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timerId);
+    }
+  }
+
+  function classifyNetworkError(err) {
+    if (err && err.code === 'OFFLINE') {
+      return {
+        title: 'No Internet Connection',
+        msg: 'You appear to be offline. Your form details are safe — reconnect to the internet and tap Retry.'
+      };
+    }
+    if (err && err.code === 'TIMEOUT') {
+      return {
+        title: 'Server Timeout',
+        msg: 'The server took too long to respond. Your form details are still intact — please tap Retry.'
+      };
+    }
+    return {
+      title: 'Connection Interrupted',
+      msg: 'We couldn\u2019t reach the server right now. Your form details have been preserved — please tap Retry.'
+    };
+  }
+
+  window.addEventListener('offline', () => {
+    showToast('Internet connection lost — your entered details are safe.', 'warn');
+  });
+  window.addEventListener('online', () => {
+    showToast('Back online! You can submit or retry now.', 'ok');
+  });
 
   function getActiveDay() {
     return (window._APP_CONFIG && window._APP_CONFIG.activeDay) || 1;
@@ -65,33 +115,48 @@
     });
   }
 
-  document.getElementById('errorCloseBtn')?.addEventListener('click', () => {
-    if (errorModalTimer) {
-      clearTimeout(errorModalTimer);
-      errorModalTimer = null;
-    }
-    closeModal(errorModal);
-    resetForm();
-  });
-  document.querySelectorAll('.modal-backdrop').forEach((bd) => {
-    bd.addEventListener('click', () => {
+  if (errorRetryBtn) {
+    errorRetryBtn.addEventListener('click', () => {
+      const action = pendingRetryAction;
+      pendingRetryAction = null;
       if (errorModalTimer) {
         clearTimeout(errorModalTimer);
         errorModalTimer = null;
       }
       closeModal(errorModal);
-      resetForm();
+      if (typeof action === 'function') {
+        action();
+      }
+    });
+  }
+
+  document.getElementById('errorCloseBtn')?.addEventListener('click', () => {
+    pendingRetryAction = null;
+    if (errorModalTimer) {
+      clearTimeout(errorModalTimer);
+      errorModalTimer = null;
+    }
+    closeModal(errorModal);
+  });
+  document.querySelectorAll('.modal-backdrop').forEach((bd) => {
+    bd.addEventListener('click', () => {
+      pendingRetryAction = null;
+      if (errorModalTimer) {
+        clearTimeout(errorModalTimer);
+        errorModalTimer = null;
+      }
+      closeModal(errorModal);
     });
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      pendingRetryAction = null;
       if (errorModalTimer) {
         clearTimeout(errorModalTimer);
         errorModalTimer = null;
       }
       closeModal(errorModal);
       hideTopSuccess();
-      resetForm();
     }
   });
 
@@ -255,14 +320,22 @@
     }
 
     try {
-      const res = await fetch(API_URL + '/verify-attendee', {
+      const res = await fetchWithTimeout(API_URL + '/verify-attendee', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contact: arrangedContact })
-      });
+      }, 20000);
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.success || !data.attendee) {
+        if (res.status >= 500) {
+          showErrorModal(
+            'The server is temporarily busy while verifying your number. Tap Retry to try again.',
+            'Server Temporarily Busy',
+            { retryAction: () => verifyReturningPhone() }
+          );
+          return;
+        }
         clearVerifiedProfile();
         showToast(data.message || 'Phone number not found. Please register under New Registration.', 'err');
         return;
@@ -292,13 +365,14 @@
       updateSubmitButtonLabel();
 
       if (att.alreadyCheckedInToday) {
-        showToast(`${att.name} is already checked in for Day ${activeDay}.`, 'ok');
+        showToast(`${att.name} is already checked in for Day\u00A0${activeDay}.`, 'ok');
       } else {
         showToast(`Verified: ${att.title ? att.title + ' ' : ''}${att.name}. Tap Confirm Check-In!`, 'ok');
       }
     } catch (err) {
       console.error(err);
-      showToast('Could not reach server to verify phone number.', 'err');
+      const info = classifyNetworkError(err);
+      showErrorModal(info.msg, info.title, { retryAction: () => verifyReturningPhone() });
     } finally {
       if (verifyPhoneBtn) {
         verifyPhoneBtn.classList.remove('loading');
@@ -991,7 +1065,7 @@
         return;
       }
       if (verifiedAttendee.alreadyCheckedInToday) {
-        showToast(`Already checked in for Day ${getActiveDay()}.`, 'ok');
+        showToast(`Already checked in for Day\u00A0${getActiveDay()}.`, 'ok');
         return;
       }
 
@@ -1002,28 +1076,34 @@
         const rawContact = document.getElementById('contact').value.trim();
         const arrangedContact = formatArrangedPhone(rawContact, country);
 
-        const response = await fetch(API_URL + '/checkin', {
+        const response = await fetchWithTimeout(API_URL + '/checkin', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contact: arrangedContact })
-        });
+        }, 20000);
         const data = await response.json().catch(() => ({}));
 
         if (!response.ok || !data.success) {
-          showErrorModal(data.message || 'Check-in failed. Please try again.', 'Check-In Error', false);
+          const isRetryable = response.status >= 500 || response.status === 408 || response.status === 429;
+          showErrorModal(
+            data.message || 'Check-in failed. Your details are preserved — please try again.',
+            isRetryable ? 'Server Temporarily Busy' : 'Check-In Error',
+            { retryAction: isRetryable ? () => form.requestSubmit() : null }
+          );
           return;
         }
 
         const att = data.attendee || verifiedAttendee;
         const activeDay = data.activeDay || getActiveDay();
         const desc = data.alreadyCheckedIn
-          ? `${att.name} was already checked in for Day ${activeDay}.`
-          : `Welcome back, ${extractFirst(att.name)}! Checked in for Day ${activeDay} & SMS sent.`;
+          ? `${att.name} was already checked in for Day\u00A0${activeDay}.`
+          : `Welcome back, ${extractFirst(att.name)}! Checked in for Day\u00A0${activeDay} & SMS sent.`;
         showTopSuccess(att.name, att.ticketId || `DAY ${activeDay}`, desc);
         resetForm();
       } catch (err) {
         console.error(err);
-        showErrorModal('We couldn\u2019t reach the server right now. Check your connection and try again.', 'Connection Issue', false);
+        const info = classifyNetworkError(err);
+        showErrorModal(info.msg, info.title, { retryAction: () => form.requestSubmit() });
       } finally {
         setLoading(false);
         updateSubmitButtonLabel();
@@ -1064,20 +1144,21 @@
         location: document.getElementById('location').value.trim()
       };
 
-      const response = await fetch(API_URL + '/register', {
+      const response = await fetchWithTimeout(API_URL + '/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
-      });
+      }, 20000);
 
       let data;
       try { data = await response.json(); } catch (_) { data = {}; }
 
       if (!response.ok || !data || data.success === false) {
         const code = data && data.code;
-        let msg = (data && data.message) || 'Something went wrong. Please try again.';
+        let msg = (data && data.message) || 'Something went wrong. Your details are still safe — please try again.';
         let title = 'We hit a snag';
         let isDuplicate = false;
+        let retryAction = null;
 
         if (code === 'DUPLICATE_REGISTRATION' || code === 'DUPLICATE_CONTACT' || /already exists|already registered/i.test(msg)) {
           title = "Phone Number Already Registered";
@@ -1087,11 +1168,12 @@
         } else if (response.status === 400) {
           title = 'Please Check Your Details';
           msg = (data && data.message) || 'Some fields need your attention — please review and try again.';
-        } else if (response.status >= 500) {
-          title = 'Server Busy';
-          msg = 'Server is temporarily busy. Please try again in a moment.';
+        } else if (response.status >= 500 || response.status === 408 || response.status === 429) {
+          title = 'Server Temporarily Busy';
+          msg = 'The server is temporarily busy. Your form details are still intact — please tap Retry.';
+          retryAction = () => form.requestSubmit();
         }
-        showErrorModal(msg, title, isDuplicate);
+        showErrorModal(msg, title, { isDuplicate, retryAction });
         setLoading(false);
         return;
       }
@@ -1108,7 +1190,8 @@
 
     } catch (err) {
       console.error(err);
-      showErrorModal('We couldn\u2019t reach the server right now. Check your connection and try again.', 'Connection Issue', false);
+      const info = classifyNetworkError(err);
+      showErrorModal(info.msg, info.title, { retryAction: () => form.requestSubmit() });
     } finally {
       setLoading(false);
     }
@@ -1120,17 +1203,37 @@
     return parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1).toLowerCase() : 'friend';
   }
 
-  function showErrorModal(msg, title = 'We hit a snag', isDuplicate = false) {
+  function showErrorModal(msg, title = 'We hit a snag', optionsOrDup = false) {
+    const opts = typeof optionsOrDup === 'object' && optionsOrDup !== null
+      ? optionsOrDup
+      : { isDuplicate: Boolean(optionsOrDup), retryAction: null };
+    const isDuplicate = Boolean(opts.isDuplicate);
+    const retryAction = typeof opts.retryAction === 'function' ? opts.retryAction : null;
+
     const errorTitle = document.getElementById('errorTitle');
     const errorIconCircle = document.querySelector('.error-icon-circle');
     const errorIcon = errorIconCircle ? errorIconCircle.querySelector('i') : null;
     const errorCloseBtn = document.getElementById('errorCloseBtn');
 
+    pendingRetryAction = retryAction;
+
     if (errorTitle) errorTitle.textContent = title;
     if (errorMessage) errorMessage.textContent = msg;
 
+    if (errorRetryBtn) {
+      errorRetryBtn.style.display = retryAction ? 'inline-flex' : 'none';
+    }
+
     if (errorCloseBtn) {
-      errorCloseBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> Close';
+      if (retryAction) {
+        errorCloseBtn.classList.remove('btn-primary');
+        errorCloseBtn.classList.add('btn-ghost');
+        errorCloseBtn.innerHTML = '<i class="fa-solid fa-pen"></i> Keep Editing';
+      } else {
+        errorCloseBtn.classList.remove('btn-ghost');
+        errorCloseBtn.classList.add('btn-primary');
+        errorCloseBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> Close';
+      }
     }
 
     if (errorModalTimer) {
@@ -1145,7 +1248,7 @@
         if (switchToCheckInBtn) switchToCheckInBtn.style.display = 'inline-flex';
       } else {
         errorIconCircle.classList.remove('is-info');
-        if (errorIcon) errorIcon.className = 'fa-solid fa-xmark';
+        if (errorIcon) errorIcon.className = retryAction ? 'fa-solid fa-wifi' : 'fa-solid fa-xmark';
         if (switchToCheckInBtn) switchToCheckInBtn.style.display = 'none';
         pendingDuplicatePhone = '';
       }

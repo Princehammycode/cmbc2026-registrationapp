@@ -8,6 +8,34 @@
       (window.location.origin + '/api');
   }
 
+  async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      const err = new Error('OFFLINE');
+      err.code = 'OFFLINE';
+      throw err;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        const tErr = new Error('TIMEOUT');
+        tErr.code = 'TIMEOUT';
+        throw tErr;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function getFriendlyNetworkError(err, fallback = 'Connection error. Your inputs are still here — please try again.') {
+    if (err && err.code === 'OFFLINE') return 'No internet connection. Your inputs are saved — reconnect and click Retry.';
+    if (err && err.code === 'TIMEOUT') return 'Server timed out. Your inputs are preserved — please click the button to retry.';
+    return fallback;
+  }
+
   function getActiveDay() {
     return (window._APP_CONFIG && window._APP_CONFIG.activeDay) || regStats.activeDay || 1;
   }
@@ -1034,7 +1062,7 @@
         const saveBtn = document.getElementById('saveAddBtn');
         if (saveBtn) saveBtn.disabled = true;
         try {
-          const res = await fetch(`${getApiUrl()}/registrations`, {
+          const res = await fetchWithTimeout(`${getApiUrl()}/registrations`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({
@@ -1051,7 +1079,7 @@
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || !data.success) {
-            showToast(data.message || 'Failed to register attendee.', 'err');
+            showToast(data.message || 'Failed to register attendee. Your inputs are still here — please retry.', 'err');
             return;
           }
           closeAdminModal('addRecordModal');
@@ -1059,7 +1087,7 @@
           await loadRegistrationsData();
         } catch (err) {
           console.error(err);
-          showToast('Network error adding attendee.', 'err');
+          showToast(getFriendlyNetworkError(err, 'Could not reach server. Your inputs are preserved — click Register Attendee to retry.'), 'err');
         } finally {
           if (saveBtn) saveBtn.disabled = false;
         }
@@ -1074,7 +1102,7 @@
         const saveBtn = document.getElementById('saveEditBtn');
         if (saveBtn) saveBtn.disabled = true;
         try {
-          const res = await fetch(`${getApiUrl()}/registrations/${id}`, {
+          const res = await fetchWithTimeout(`${getApiUrl()}/registrations/${id}`, {
             method: 'PUT',
             headers: getAuthHeaders(),
             body: JSON.stringify({
@@ -1090,7 +1118,7 @@
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || !data.success) {
-            showToast(data.message || 'Failed to update record.', 'err');
+            showToast(data.message || 'Failed to update record. Your edits are still here — please retry.', 'err');
             return;
           }
           closeAdminModal('editRecordModal');
@@ -1098,7 +1126,7 @@
           await loadRegistrationsData();
         } catch (err) {
           console.error(err);
-          showToast('Network error updating record.', 'err');
+          showToast(getFriendlyNetworkError(err, 'Could not reach server. Your edits are preserved — click Save Changes to retry.'), 'err');
         } finally {
           if (saveBtn) saveBtn.disabled = false;
         }
