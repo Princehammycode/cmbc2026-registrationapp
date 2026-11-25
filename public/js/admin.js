@@ -853,7 +853,7 @@
       if (endPage - startPage + 1 < maxVisible) startPage = Math.max(1, endPage - maxVisible + 1);
       let html = '';
       for (let p = startPage; p <= endPage; p++) {
-        html += `<button type="button" class="page-num-btn${p === currentPage ? ' active' : ''}" onclick="goToPage(${p})">${p}</button>`;
+        html += `<button type="button" class="page-num-btn${p === currentPage ? ' active' : ''}" data-page="${p}" aria-label="Page ${p}"${p === currentPage ? ' aria-current="page"' : ''}>${p}</button>`;
       }
       pageNumbers.innerHTML = html;
     }
@@ -1513,6 +1513,23 @@
         window.location.replace('/login');
       });
     }
+
+    const { firstPageBtn, prevPageBtn, nextPageBtn, lastPageBtn, pageNumbers } = state.el;
+    if (firstPageBtn) firstPageBtn.addEventListener('click', () => window.goToFirstPage());
+    if (prevPageBtn) prevPageBtn.addEventListener('click', () => window.previousPage());
+    if (nextPageBtn) nextPageBtn.addEventListener('click', () => window.nextPage());
+    if (lastPageBtn) lastPageBtn.addEventListener('click', () => window.goToLastPage());
+    if (pageNumbers) {
+      pageNumbers.addEventListener('click', (e) => {
+        const btn = e.target.closest('.page-num-btn[data-page]');
+        if (!btn) return;
+        const pageNum = parseInt(btn.getAttribute('data-page'), 10);
+        if (!Number.isNaN(pageNum)) window.goToPage(pageNum);
+      });
+    }
+
+    document.getElementById('manualRefreshBtn')?.addEventListener('click', () => window.refreshData());
+    document.getElementById('emptyRefreshBtn')?.addEventListener('click', () => window.refreshData());
 
     setupFiltersAndMenus();
     setupTableAndModalListeners();

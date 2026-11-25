@@ -239,7 +239,7 @@
             </span>
             <span class="toggle-label">Auto-Refresh</span>
           </label>
-          <button type="button" class="btn btn-ghost" id="manualRefreshBtn" onclick="refreshData()"
+          <button type="button" class="btn btn-ghost" id="manualRefreshBtn"
             title="Refresh records">
             <i class="fa-solid fa-rotate" id="refreshIcon"></i>
             <span>Refresh</span>
@@ -322,7 +322,7 @@
             <h3 class="empty-title" id="emptyTitle">No records found</h3>
             <p class="empty-desc" id="emptyDesc">No matching records found. Try adjusting your search query or
               refreshing the table.</p>
-            <button type="button" class="btn btn-ghost" onclick="refreshData()">
+            <button type="button" class="btn btn-ghost" id="emptyRefreshBtn">
               <i class="fa-solid fa-rotate"></i> Refresh Data
             </button>
           </div>
@@ -347,20 +347,20 @@
             </div>
           </div>
           <div class="pagination-controls">
-            <button type="button" class="page-btn" id="firstPageBtn" onclick="goToFirstPage()" title="First Page">
+            <button type="button" class="page-btn" id="firstPageBtn" title="First Page">
               <i class="fa-solid fa-angles-left"></i>
               <span class="page-btn-label">First</span>
             </button>
-            <button type="button" class="page-btn" id="prevPageBtn" onclick="previousPage()" title="Previous Page">
+            <button type="button" class="page-btn" id="prevPageBtn" title="Previous Page">
               <i class="fa-solid fa-angle-left"></i>
               <span class="page-btn-label">Prev</span>
             </button>
             <div class="page-numbers" id="pageNumbers"></div>
-            <button type="button" class="page-btn" id="nextPageBtn" onclick="nextPage()" title="Next Page">
+            <button type="button" class="page-btn" id="nextPageBtn" title="Next Page">
               <span class="page-btn-label">Next</span>
               <i class="fa-solid fa-angle-right"></i>
             </button>
-            <button type="button" class="page-btn" id="lastPageBtn" onclick="goToLastPage()" title="Last Page">
+            <button type="button" class="page-btn" id="lastPageBtn" title="Last Page">
               <span class="page-btn-label">Last</span>
               <i class="fa-solid fa-angles-right"></i>
             </button>
@@ -624,7 +624,7 @@
 
   <script src="js/config.js?v=20261124"></script>
   <script src="js/auth.js?v=20261124"></script>
-  <script src="js/admin.js?v=20261124b"></script>
+  <script src="js/admin.js?v=20261125"></script>
 </body>
 
 </html>
