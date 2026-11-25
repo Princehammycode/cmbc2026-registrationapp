@@ -34,6 +34,7 @@
 
   const PERM_LABELS = {
     view_registrations: { label: 'View Records', cls: '' },
+    add_registrations: { label: 'Add Attendees', cls: '' },
     edit_registrations: { label: 'Edit Records', cls: '' },
     delete_registrations: { label: 'Delete Records', cls: 'perm-danger' },
     export_data: { label: 'Export CSV', cls: '' },
@@ -774,7 +775,12 @@
       const ticketId = escapeHtml(reg.ticket_id || '—');
       const title = escapeHtml(reg.member_status || '—');
       const name = escapeHtml(reg.name || '—');
-      const phone = escapeHtml(formatPhoneDisplay(reg.contact) || '—');
+      const rawPhone = String(reg.contact || '').trim();
+      const hasPhone = Boolean(rawPhone && rawPhone.toLowerCase() !== 'n/a' && rawPhone !== '-');
+      const phone = hasPhone ? escapeHtml(formatPhoneDisplay(rawPhone) || rawPhone) : 'N/A';
+      const phoneCellHtml = hasPhone
+        ? `<a class="contact-link" href="tel:${phone}"><i class="fa-solid fa-phone"></i> ${phone}</a>`
+        : `<span class="muted">N/A</span>`;
       const church = escapeHtml(reg.location || 'N/A');
       const smsBadge = reg.sms_sent === true
         ? '<span class="status-badge sent"><i class="fa-solid fa-check"></i> Sent</span>'
@@ -790,7 +796,7 @@
           <td class="ticket-pill"><code>${ticketId}</code></td>
           <td><span class="member-pill status-member">${title}</span></td>
           <td><span class="attendee-name">${name}</span></td>
-          <td><a class="contact-link" href="tel:${phone}"><i class="fa-solid fa-phone"></i> ${phone}</a></td>
+          <td>${phoneCellHtml}</td>
           <td><span class="loc-text"><i class="fa-solid fa-church"></i> ${church}</span></td>
           <td>${renderDayCell(reg.day1_attended)}</td>
           <td>${renderDayCell(reg.day2_attended)}</td>
@@ -907,7 +913,9 @@
     document.getElementById('editRecordId').value = reg.id;
     document.getElementById('editTitle').value = reg.member_status || '';
     document.getElementById('editName').value = reg.name || '';
-    document.getElementById('editContact').value = formatPhoneDisplay(reg.contact) || reg.contact || '';
+    const rawContact = String(reg.contact || '').trim();
+    const hasContact = Boolean(rawContact && rawContact.toLowerCase() !== 'n/a' && rawContact !== '-');
+    document.getElementById('editContact').value = hasContact ? (formatPhoneDisplay(rawContact) || rawContact) : '';
     document.getElementById('editChurch').value = (reg.location && reg.location !== 'N/A') ? reg.location : '';
     document.getElementById('editDay1').checked = Boolean(reg.day1_attended);
     document.getElementById('editDay2').checked = Boolean(reg.day2_attended);
@@ -978,6 +986,85 @@
         closeAdminModal(el.getAttribute('data-close-admin-modal'));
       });
     });
+
+    const addContactInput = document.getElementById('addContact');
+    const syncAddSmsCheckbox = (isReset = false) => {
+      const smsCb = document.getElementById('addSendSms');
+      const smsWrap = document.getElementById('addSendSmsWrap');
+      if (!smsCb) return;
+      const val = addContactInput ? addContactInput.value.trim() : '';
+      const hasPhone = Boolean(val && val.toLowerCase() !== 'n/a' && val !== '-');
+      if (!hasPhone) {
+        smsCb.checked = false;
+        smsCb.disabled = true;
+        if (smsWrap) smsWrap.classList.add('is-disabled');
+      } else {
+        const wasDisabled = smsCb.disabled;
+        smsCb.disabled = false;
+        if (smsWrap) smsWrap.classList.remove('is-disabled');
+        if (wasDisabled || isReset) {
+          smsCb.checked = true;
+        }
+      }
+    };
+
+    if (addContactInput) {
+      addContactInput.addEventListener('input', () => syncAddSmsCheckbox(false));
+    }
+
+    const openAddRecordBtn = document.getElementById('openAddRecordBtn');
+    if (openAddRecordBtn) {
+      openAddRecordBtn.addEventListener('click', () => {
+        const form = document.getElementById('addRecordForm');
+        if (form) form.reset();
+        const activeDay = getActiveDay();
+        for (let d = 1; d <= 4; d++) {
+          const cb = document.getElementById(`addDay${d}`);
+          if (cb) cb.checked = d === activeDay;
+        }
+        syncAddSmsCheckbox(true);
+        openAdminModal('addRecordModal');
+      });
+    }
+
+    const addForm = document.getElementById('addRecordForm');
+    if (addForm) {
+      addForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const saveBtn = document.getElementById('saveAddBtn');
+        if (saveBtn) saveBtn.disabled = true;
+        try {
+          const res = await fetch(`${getApiUrl()}/registrations`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              memberStatus: document.getElementById('addTitle').value,
+              name: document.getElementById('addName').value.trim(),
+              contact: document.getElementById('addContact').value.trim(),
+              location: document.getElementById('addChurch').value.trim() || 'N/A',
+              day1_attended: document.getElementById('addDay1').checked,
+              day2_attended: document.getElementById('addDay2').checked,
+              day3_attended: document.getElementById('addDay3').checked,
+              day4_attended: document.getElementById('addDay4').checked,
+              sendSms: document.getElementById('addSendSms').checked
+            })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.success) {
+            showToast(data.message || 'Failed to register attendee.', 'err');
+            return;
+          }
+          closeAdminModal('addRecordModal');
+          showToast(data.message || 'Attendee registered successfully.', 'ok');
+          await loadRegistrationsData();
+        } catch (err) {
+          console.error(err);
+          showToast('Network error adding attendee.', 'err');
+        } finally {
+          if (saveBtn) saveBtn.disabled = false;
+        }
+      });
+    }
 
     const editForm = document.getElementById('editRecordForm');
     if (editForm) {
@@ -1241,6 +1328,10 @@
     }
     if (exportWrap) {
       exportWrap.style.display = hasPermission('export_data') ? '' : 'none';
+    }
+    const openAddRecordBtn = document.getElementById('openAddRecordBtn');
+    if (openAddRecordBtn) {
+      openAddRecordBtn.style.display = hasPermission('add_registrations') ? 'inline-flex' : 'none';
     }
   }
 

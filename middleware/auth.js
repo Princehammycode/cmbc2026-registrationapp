@@ -5,6 +5,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
 
 const ALL_PERMISSIONS = [
   'view_registrations',
+  'add_registrations',
   'edit_registrations',
   'delete_registrations',
   'export_data',

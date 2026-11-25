@@ -15,7 +15,7 @@
     referrerpolicy="no-referrer">
   <link rel="icon" type="image/svg+xml" href="images/logo.svg?v=20261117">
   <link rel="apple-touch-icon" href="images/logo.svg?v=20261117">
-  <link rel="stylesheet" href="css/admin.css?v=20261124b">
+  <link rel="stylesheet" href="css/admin.css?v=20261125d">
 </head>
 
 <body>
@@ -285,9 +285,15 @@
             <p class="table-subtitle" id="tableCardSubtitle">View ticket details, membership category, SMS/Email
               delivery, and export data.</p>
           </div>
-          <div class="table-badge-chip">
-            <span class="chip-dot"></span>
-            <span id="totalEntriesLabel">0 entries</span>
+          <div class="table-head-actions">
+            <div class="table-badge-chip">
+              <span class="chip-dot"></span>
+              <span id="totalEntriesLabel">0 entries</span>
+            </div>
+            <button type="button" class="btn btn-primary" id="openAddRecordBtn" style="display: none;">
+              <i class="fa-solid fa-user-plus"></i>
+              <span>Add Attendee</span>
+            </button>
           </div>
         </div>
 
@@ -427,6 +433,79 @@
     </div>
   </div>
 
+  <!-- Add Attendee Modal -->
+  <div class="admin-modal" id="addRecordModal" role="dialog" aria-modal="true" aria-labelledby="addModalTitle">
+    <div class="admin-modal-backdrop" data-close-admin-modal="addRecordModal"></div>
+    <div class="admin-modal-panel">
+      <div class="admin-modal-head">
+        <h3 id="addModalTitle"><i class="fa-solid fa-user-plus"></i> Add New Attendee</h3>
+        <button type="button" class="admin-modal-close" data-close-admin-modal="addRecordModal" aria-label="Close">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <form id="addRecordForm">
+        <div class="admin-modal-body">
+          <div class="modal-form-grid">
+            <div class="modal-field">
+              <label for="addTitle">Title *</label>
+              <select id="addTitle" required>
+                <option value="">— Select —</option>
+                <option value="Mr.">Mr.</option>
+                <option value="Mrs.">Mrs.</option>
+                <option value="Miss">Miss</option>
+                <option value="Dr.">Dr.</option>
+                <option value="Rev.">Rev.</option>
+                <option value="Min.">Min.</option>
+                <option value="Pastor">Pastor</option>
+                <option value="Bishop">Bishop</option>
+                <option value="Elder">Elder</option>
+                <option value="Deacon">Deacon</option>
+                <option value="Deaconess">Deaconess</option>
+                <option value="Bro.">Bro.</option>
+                <option value="Sis.">Sis.</option>
+              </select>
+            </div>
+            <div class="modal-field">
+              <label for="addName">Full Name *</label>
+              <input type="text" id="addName" required minlength="2" maxlength="100" placeholder="e.g. Kwame Mensah">
+            </div>
+          </div>
+          <div class="modal-form-grid">
+            <div class="modal-field">
+              <label for="addContact">Phone Number (optional)</label>
+              <input type="tel" id="addContact" maxlength="20" placeholder="Leave blank if unavailable (N/A)">
+            </div>
+            <div class="modal-field">
+              <label for="addChurch">Church / Organization</label>
+              <input type="text" id="addChurch" maxlength="100" placeholder="e.g. Holy Hill Chapel AG">
+            </div>
+          </div>
+          <div class="modal-field">
+            <label>Conference Attendance</label>
+            <div class="modal-days-grid">
+              <label class="day-check-item"><input type="checkbox" id="addDay1"> <span>Day 1 (Tue 24)</span></label>
+              <label class="day-check-item"><input type="checkbox" id="addDay2"> <span>Day 2 (Wed 25)</span></label>
+              <label class="day-check-item"><input type="checkbox" id="addDay3"> <span>Day 3 (Thu 26)</span></label>
+              <label class="day-check-item"><input type="checkbox" id="addDay4"> <span>Day 4 (Fri 27)</span></label>
+            </div>
+          </div>
+          <div class="modal-field" style="margin-top:12px;">
+            <label class="day-check-item is-disabled" id="addSendSmsWrap">
+              <input type="checkbox" id="addSendSms" disabled>
+              <span>Send confirmation SMS to attendee</span>
+            </label>
+          </div>
+        </div>
+        <div class="admin-modal-foot">
+          <button type="button" class="btn btn-ghost" data-close-admin-modal="addRecordModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveAddBtn">
+            <i class="fa-solid fa-user-plus"></i> Register Attendee
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Edit Record Modal -->
   <div class="admin-modal" id="editRecordModal" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
     <div class="admin-modal-backdrop" data-close-admin-modal="editRecordModal"></div>
@@ -467,8 +546,8 @@
           </div>
           <div class="modal-form-grid">
             <div class="modal-field">
-              <label for="editContact">Phone Number *</label>
-              <input type="tel" id="editContact" required maxlength="20">
+              <label for="editContact">Phone Number (optional)</label>
+              <input type="tel" id="editContact" maxlength="20" placeholder="Leave blank if unavailable (N/A)">
             </div>
             <div class="modal-field">
               <label for="editChurch">Church / Organization</label>
@@ -566,6 +645,10 @@
                 <span><strong>View Registrations</strong> &mdash; View dashboard, stats &amp; details</span>
               </label>
               <label class="day-check-item">
+                <input type="checkbox" name="userPerm" value="add_registrations">
+                <span><strong>Add Attendees</strong> &mdash; Register new attendees from the dashboard</span>
+              </label>
+              <label class="day-check-item">
                 <input type="checkbox" name="userPerm" value="edit_registrations">
                 <span><strong>Edit Records</strong> &mdash; Edit attendee info &amp; Day 1&ndash;4 attendance</span>
               </label>
@@ -624,7 +707,7 @@
 
   <script src="js/config.js?v=20261124"></script>
   <script src="js/auth.js?v=20261124"></script>
-  <script src="js/admin.js?v=20261125"></script>
+  <script src="js/admin.js?v=20261125d"></script>
 </body>
 
 </html>

@@ -58,8 +58,8 @@ async function initializeDatabase() {
         id SERIAL PRIMARY KEY,
         ticket_id VARCHAR(20) NOT NULL,
         name VARCHAR(255) NOT NULL,
-        contact VARCHAR(20) NOT NULL,
-        contact_normalized VARCHAR(20) NOT NULL,
+        contact VARCHAR(20) NOT NULL DEFAULT 'N/A',
+        contact_normalized VARCHAR(20),
         email VARCHAR(255),
         location VARCHAR(255),
         registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -107,11 +107,16 @@ async function initializeDatabase() {
     if (colCheck.rows.length === 0) {
       await client.query(`ALTER TABLE registrations ADD COLUMN contact_normalized VARCHAR(20)`);
       await client.query(`UPDATE registrations SET contact_normalized = normalize_contact(contact)`);
-      await client.query(`ALTER TABLE registrations ALTER COLUMN contact_normalized SET NOT NULL`);
       try {
         await client.query(`
           CREATE INDEX IF NOT EXISTS idx_registrations_contact_norm ON registrations(contact_normalized)
         `);
+      } catch (_) { }
+    } else {
+      // Allow NULL contact_normalized for admin-added attendees without a phone number
+      // (PostgreSQL UNIQUE indexes permit multiple NULL values while enforcing uniqueness for real numbers)
+      try {
+        await client.query(`ALTER TABLE registrations ALTER COLUMN contact_normalized DROP NOT NULL`);
       } catch (_) { }
     }
 
@@ -201,40 +206,45 @@ async function saveRegistration(registration) {
 }
 
 async function saveRegistrationWithDedup(registration, dayOverride) {
-  const normalizedContact = normalizeContact(registration.contact);
+  const rawContactStr = String(registration.contact || '').trim();
+  const hasPhone = Boolean(rawContactStr && rawContactStr.toLowerCase() !== 'n/a' && rawContactStr !== '-');
+  const storedContact = hasPhone ? rawContactStr : 'N/A';
+  const normalizedContact = hasPhone ? normalizeContact(rawContactStr) : null;
   const activeDay = getActiveConferenceDay(dayOverride);
   const dayCol = `day${activeDay}_attended`;
   const dayTimeCol = `day${activeDay}_checkin_at`;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const lockKey = parseInt(
-      normalizedContact.substring(normalizedContact.length - 9) || '0',
-      10
-    );
-    await client.query('SELECT pg_advisory_xact_lock($1)', [lockKey]);
+    if (hasPhone && normalizedContact) {
+      const lockKey = parseInt(
+        normalizedContact.substring(normalizedContact.length - 9) || '0',
+        10
+      );
+      await client.query('SELECT pg_advisory_xact_lock($1)', [lockKey]);
 
-    // Strict phone uniqueness: no two registrations may share a phone number
-    const dupCheck = await client.query(
-      `SELECT id, ticket_id, name, contact, member_status, location,
-              day1_attended, day2_attended, day3_attended, day4_attended
-       FROM registrations
-       WHERE contact_normalized = $1 OR contact = $2
-       LIMIT 1`,
-      [normalizedContact, registration.contact]
-    );
-    if (dupCheck.rows.length > 0) {
-      await client.query('ROLLBACK');
-      const existing = dupCheck.rows[0];
-      console.log('⚠️ Duplicate phone rejected:', normalizedContact, 'existing:', existing.name);
-      return {
-        success: false,
-        duplicate: true,
-        code: 'DUPLICATE_CONTACT',
-        ticketId: existing.ticket_id,
-        existing,
-        message: 'This phone number is already registered! Please use "Returning Attendee" to check in.'
-      };
+      // Strict phone uniqueness: no two registrations may share a phone number
+      const dupCheck = await client.query(
+        `SELECT id, ticket_id, name, contact, member_status, location,
+                day1_attended, day2_attended, day3_attended, day4_attended
+         FROM registrations
+         WHERE contact_normalized = $1 OR contact = $2
+         LIMIT 1`,
+        [normalizedContact, storedContact]
+      );
+      if (dupCheck.rows.length > 0) {
+        await client.query('ROLLBACK');
+        const existing = dupCheck.rows[0];
+        console.log('⚠️ Duplicate phone rejected:', normalizedContact, 'existing:', existing.name);
+        return {
+          success: false,
+          duplicate: true,
+          code: 'DUPLICATE_CONTACT',
+          ticketId: existing.ticket_id,
+          existing,
+          message: 'This phone number is already registered! Please use "Returning Attendee" to check in.'
+        };
+      }
     }
 
     let ticketId = null;
@@ -253,7 +263,7 @@ async function saveRegistrationWithDedup(registration, dayOverride) {
           [
             candidate,
             registration.name,
-            registration.contact,
+            storedContact,
             normalizedContact,
             registration.email || null,
             registration.location || null,
@@ -364,10 +374,12 @@ async function updateRegistration(id, updates) {
     const newName = updates.name !== undefined ? String(updates.name).trim() : current.name;
     const newTitle = updates.memberStatus !== undefined ? String(updates.memberStatus).trim() : current.member_status;
     const newLocation = updates.location !== undefined ? (String(updates.location).trim() || 'N/A') : current.location;
-    const newContact = updates.contact !== undefined ? String(updates.contact).trim() : current.contact;
-    const newNormalized = normalizeContact(newContact);
+    const rawNewContact = updates.contact !== undefined ? String(updates.contact).trim() : String(current.contact || '').trim();
+    const hasNewPhone = Boolean(rawNewContact && rawNewContact.toLowerCase() !== 'n/a' && rawNewContact !== '-');
+    const newContact = hasNewPhone ? rawNewContact : 'N/A';
+    const newNormalized = hasNewPhone ? normalizeContact(newContact) : null;
 
-    if (newNormalized !== current.contact_normalized) {
+    if (newNormalized && newNormalized !== current.contact_normalized) {
       const conflict = await client.query(
         'SELECT id FROM registrations WHERE contact_normalized = $1 AND id <> $2 LIMIT 1',
         [newNormalized, id]

@@ -761,6 +761,100 @@ app.post('/api/checkin', async (req, res) => {
   }
 });
 
+// Admin: Add a new attendee registration from the dashboard
+app.post('/api/registrations', verifyToken, requirePermission('add_registrations'), async (req, res) => {
+  try {
+    const body = req.body || {};
+    const name = sanitizeInput(String(body.name || '').trim());
+    const memberStatus = sanitizeInput(String(body.memberStatus ?? body.title ?? '').trim());
+    const rawContact = String(body.contact || '').trim();
+    const location = sanitizeInput(String(body.location ?? body.church ?? '').trim()) || 'N/A';
+    const sendSms = body.sendSms !== false;
+
+    if (name.length < 2) {
+      return res.status(400).json({ success: false, message: 'Full name is required (min 2 characters).' });
+    }
+    if (!/^[A-Za-z\u00C0-\u024F\s'.-]+$/.test(name)) {
+      return res.status(400).json({ success: false, message: 'Name can only contain letters, spaces, hyphens, apostrophes.' });
+    }
+    const hasPhone = Boolean(rawContact && rawContact.toLowerCase() !== 'n/a' && rawContact !== '-');
+    let storedContact = 'N/A';
+    if (hasPhone) {
+      const rawDigits = rawContact.replace(/\D/g, '');
+      if (rawDigits.length < 7 || rawDigits.length > 17) {
+        return res.status(400).json({ success: false, message: 'Please enter a valid phone number (7 to 17 digits) or leave it blank.' });
+      }
+      storedContact = toStoredContact(rawContact);
+    }
+
+    const saveResult = await databaseService.saveRegistrationWithDedup({
+      name,
+      contact: storedContact,
+      memberStatus: memberStatus || null,
+      location,
+      email: null
+    });
+
+    if (!saveResult.success) {
+      if (saveResult.duplicate) {
+        return res.status(409).json({
+          success: false,
+          code: 'DUPLICATE_CONTACT',
+          message: 'This phone number is already registered in the system.'
+        });
+      }
+      return res.status(500).json({ success: false, message: 'Failed to add registration.' });
+    }
+
+    let finalRow = saveResult.row;
+    const ticketId = saveResult.ticketId;
+
+    // Apply explicit Day 1-4 attendance flags if provided by the admin
+    const hasDayFlags =
+      body.day1_attended !== undefined ||
+      body.day2_attended !== undefined ||
+      body.day3_attended !== undefined ||
+      body.day4_attended !== undefined;
+
+    if (hasDayFlags && finalRow && finalRow.id) {
+      const dayUpdates = {};
+      if (body.day1_attended !== undefined) dayUpdates.day1_attended = Boolean(body.day1_attended);
+      if (body.day2_attended !== undefined) dayUpdates.day2_attended = Boolean(body.day2_attended);
+      if (body.day3_attended !== undefined) dayUpdates.day3_attended = Boolean(body.day3_attended);
+      if (body.day4_attended !== undefined) dayUpdates.day4_attended = Boolean(body.day4_attended);
+      const updRes = await databaseService.updateRegistration(finalRow.id, dayUpdates);
+      if (updRes && updRes.success && updRes.row) {
+        finalRow = updRes.row;
+      }
+    }
+
+    // Dispatch confirmation SMS in background only if a phone number was provided and SMS was requested
+    if (hasPhone && sendSms) {
+      const ticketDownloadUrl = `${process.env.TICKET_DOWNLOAD_BASE_URL}/${ticketId}`;
+      (async () => {
+        try {
+          const smsRes = await smsService.sendRegistrationSMS(storedContact, name, ticketId, ticketDownloadUrl);
+          if (smsRes && smsRes.success) {
+            await databaseService.updateRegistrationStatus(ticketId, null, true).catch(() => {});
+          }
+        } catch (smsErr) {
+          console.error('Admin-added registration SMS error:', smsErr.message);
+        }
+      })();
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: `Attendee "${name}" registered successfully (${ticketId}).`,
+      ticketId,
+      data: finalRow
+    });
+  } catch (error) {
+    console.error('Admin add registration error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to add registration.' });
+  }
+});
+
 // Admin: Edit a registration record
 app.put('/api/registrations/:id', verifyToken, requirePermission('edit_registrations'), async (req, res) => {
   try {
@@ -781,11 +875,16 @@ app.put('/api/registrations/:id', verifyToken, requirePermission('edit_registrat
       updates.memberStatus = sanitizeInput(String(body.memberStatus ?? body.title ?? '').trim());
     }
     if (body.contact !== undefined) {
-      const rawDigits = String(body.contact).replace(/\D/g, '');
-      if (rawDigits.length < 7 || rawDigits.length > 17) {
-        return res.status(400).json({ success: false, message: 'Please enter a valid phone number.' });
+      const trimmedContact = String(body.contact).trim();
+      if (!trimmedContact || trimmedContact.toLowerCase() === 'n/a' || trimmedContact === '-') {
+        updates.contact = 'N/A';
+      } else {
+        const rawDigits = trimmedContact.replace(/\D/g, '');
+        if (rawDigits.length < 7 || rawDigits.length > 17) {
+          return res.status(400).json({ success: false, message: 'Please enter a valid phone number or leave it blank.' });
+        }
+        updates.contact = toStoredContact(trimmedContact);
       }
-      updates.contact = toStoredContact(body.contact);
     }
     if (body.location !== undefined || body.church !== undefined) {
       updates.location = sanitizeInput(String(body.location ?? body.church ?? '').trim()) || 'N/A';

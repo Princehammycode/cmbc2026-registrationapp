@@ -2671,3 +2671,22 @@ body {
   background: var(--pink-50);
   outline: none;
 }
+
+.table-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.day-check-item.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--ash-100);
+  border-color: var(--ash-200);
+  color: var(--ash-500);
+}
+
+.day-check-item.is-disabled input {
+  cursor: not-allowed;
+}
